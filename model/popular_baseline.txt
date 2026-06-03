@@ -1,0 +1,11 @@
+# MostPopular baseline — split=test  (popularity counted on split=train)
+# generated 2026-06-02T22:25:21  device=mps
+# users evaluated: 13,790   candidates (finite logq): 22,821
+
+recall@10   = 0.056754
+recall@50   = 0.169287
+recall@100  = 0.262411
+
+ndcg@10     = 0.164431
+ndcg@50     = 0.170135
+ndcg@100    = 0.204319

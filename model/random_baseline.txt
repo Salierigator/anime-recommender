@@ -1,0 +1,11 @@
+# Random baseline — split=test
+# generated 2026-06-02T15:28:11  device=mps  seed=42
+# users evaluated: 13,790   candidates (finite logq): 22,821
+
+recall@10   = 0.000473   (analytic K/N_cand = 0.000438)
+recall@50   = 0.002135   (analytic K/N_cand = 0.002191)
+recall@100  = 0.004405   (analytic K/N_cand = 0.004382)
+
+ndcg@10     = 0.002479
+ndcg@50     = 0.002686
+ndcg@100    = 0.003535
