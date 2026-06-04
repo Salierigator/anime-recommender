@@ -34,6 +34,14 @@ def _masked_mean(vecs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return summed / cnt
 
 
+def _masked_weighted_mean(vecs: torch.Tensor, mask: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    """Như _masked_mean nhưng trọng số w [*, L] (>0) mỗi vị trí. w>0 -> denom>0. Rỗng -> 0 (caller xử)."""
+    m = (mask.to(vecs.dtype) * w.to(vecs.dtype)).unsqueeze(-1)   # [*, L, 1]
+    summed = (vecs * m).sum(dim=-2)
+    denom = m.sum(dim=-2).clamp(min=1e-6)
+    return summed / denom
+
+
 class ItemTower(nn.Module):
     """Encode feature item -> vector d (L2-normalized)."""
 
@@ -131,6 +139,11 @@ class TwoTower(nn.Module):
         self.item_tower = ItemTower(spec, cfg.d, cfg.genres_proj, cfg.themes_proj, cfg.mlp_hidden,
                                     item_table.num_items, cfg.id_dim, cfg.use_item_id)
         self.user_tower = UserTower(spec, cfg.d, cfg.mlp_hidden)
+        # weighted history pooling theo điểm (score_pool): none|linear|learned.
+        # learned: trọng số dương HỌC per mức điểm 0..10 (11 bucket); pad bị mask nên không cần padding_idx.
+        self.score_pool = cfg.score_pool
+        if cfg.score_pool == "learned":
+            self.score_weight = nn.Embedding(11, 1)
         self.item_table = item_table                            # tensors trên cùng device
         self.register_buffer("item_cache", torch.zeros(item_table.num_items, cfg.d), persistent=False)
 
@@ -163,17 +176,24 @@ class TwoTower(nn.Module):
         self.train()
 
     # --- user side ---
-    def pool_history(self, history_ids, history_mask) -> torch.Tensor:
-        """Mean cached item-vec theo history (detach, no grad qua history path).
-        Row mask rỗng -> h_empty."""
+    def pool_history(self, history_ids, history_mask, history_scores=None) -> torch.Tensor:
+        """Pool cached item-vec theo history (detach, no grad qua history path). Row mask rỗng -> h_empty.
+        score_pool: none=mean; linear=weight score.clamp(min=1); learned=softplus(emb[score])."""
         vecs = self.item_cache[history_ids].detach()           # [B, L, d]
-        pooled = _masked_mean(vecs, history_mask)              # [B, d]
+        if self.score_pool == "none" or history_scores is None:
+            pooled = _masked_mean(vecs, history_mask)          # [B, d]
+        else:
+            if self.score_pool == "learned":
+                w = F.softplus(self.score_weight(history_scores).squeeze(-1))   # [B, L] >0
+            else:                                              # linear: fix cứng theo điểm
+                w = history_scores.to(vecs.dtype).clamp(min=1.0)
+            pooled = _masked_weighted_mean(vecs, history_mask, w)
         empty = ~history_mask.any(dim=-1)                       # [B]
         pooled = torch.where(empty.unsqueeze(-1), self.user_tower.h_empty.to(pooled.dtype), pooled)
         return pooled
 
     def encode_users(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        pooled = self.pool_history(batch["history_ids"], batch["history_mask"])
+        pooled = self.pool_history(batch["history_ids"], batch["history_mask"], batch.get("history_scores"))
         return self.user_tower(pooled, batch["gender_id"], batch["joined_bucket"])
 
     def forward(self, batch: Dict[str, torch.Tensor]):

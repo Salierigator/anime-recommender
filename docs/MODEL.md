@@ -81,7 +81,7 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
 
 | Nhánh feature | Layer | Out dim |
 |---|---|---|
-| history | mean cached item-vec (detach) theo `history_ids`, masked; row rỗng → `h_empty` | 128 |
+| history | pool cached item-vec (detach) theo `history_ids`, masked; **mean** (mặc định) hoặc **weighted theo điểm** (`score_pool`, xem dưới); row rỗng → `h_empty` | 128 |
 | gender | `nn.Embedding(4, 4, padding_idx=0)` | 4 |
 | joined | `nn.Embedding(5, 4)` (**không** padding_idx; NULL gộp vào cohort mới nhất 2022+ ở 04 nên cả 5 bucket đều học được, khác `gender` vẫn giữ OOV(0)) | 4 |
 | **concat** | | **136** |
@@ -90,6 +90,12 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
 
 - `h_empty` = `nn.Parameter[128]`, init `N(0, 0.02²)`, **learned** (KHÔNG zeros) — là output nhánh history khi rỗng (thay pooling chia-cho-0), rồi concat với gender/joined như bình thường.
 - **Không có user-id embedding** — drop ở v1: cold-by-user hold-out trọn user → id user lạ lúc eval vô dụng; tệ hơn, id cho model "ăn gian" memorize user → giảm áp lực lên nhánh history → hỏng đúng metric.
+- **Weighted history pooling** (`score_pool`, mặc định `none`): thay masked-mean bằng trung bình **có trọng số theo điểm** user chấm cho item trong history (`history_scores`, có sẵn trong artifact, align `history_ids`). Mean coi fan 10/10 = phim bỏ dở 6/10 như nhau → weighting sharpen user-vec về đúng gu. 3 mode:
+  - `none` — masked-mean (như cũ).
+  - `linear` — fix cứng `w = score.clamp(min=1)` (chưa-chấm 0→1, 10→10).
+  - `learned` — `w = softplus(Embedding(11,1)[score])`, trọng số dương **học** per mức điểm 0..10 (11 bucket; pad bị mask nên không cần padding_idx).
+
+  Weighted-mean = `Σ(mask·w·v) / Σ(mask·w)`; softplus/clamp ⇒ w>0 ⇒ không chia 0; row rỗng vẫn → `h_empty`. **Vì sao learned hợp hơn**: điểm lệch mạnh (77.6% là 9–10, 9.36% chưa chấm) → `linear` gần vô tác dụng ở khối 9–10 (10 vs 9 = 1.11×); `learned` để data tự quyết. Trọng số per-bucket **chung mọi user** (per-user normalization để sau). Áp cho cả train (collate) lẫn eval (`metrics.py`).
 
 ### 3.4 Item-vec cache
 
@@ -115,7 +121,7 @@ Mỗi example = `(user_idx, pos_item)`. Batch B → B user, B positive.
 1 batch B example chạy qua `TwoTower.forward(batch)` → ra 2 ma trận score. Input tensor (collate §4 dựng):
 
 - `pos [B]`, `hardneg_ids [B,m]`, `hardneg_mask [B,m]`
-- `history_ids [B,30]`, `history_mask [B,30]` (đã gỡ anchor + bỏ pad + áp dropout)
+- `history_ids [B,30]`, `history_mask [B,30]` (đã gỡ anchor + bỏ pad + áp dropout), `history_scores [B,30]` (align `history_ids`, cho weighted pooling)
 - `gender_id [B]`, `joined_bucket [B]`
 
 **Item side** (fresh, **có grad** — đây là path được supervise):
@@ -123,7 +129,7 @@ Mỗi example = `(user_idx, pos_item)`. Batch B → B user, B positive.
 2. `V_hn = encode_items(hardneg_ids)`: flatten `[B·m]` → ItemTower → reshape `[B, m, 128]`.
 
 **User side**:
-3. `pool_history(history_ids, history_mask)`: lookup `item_cache[history_ids]` (**detach**, không grad qua history) → `[B, 30, 128]` → **masked-mean** theo chiều history → `[B, 128]`; row nào mask rỗng → thay bằng `h_empty`.
+3. `pool_history(history_ids, history_mask, history_scores)`: lookup `item_cache[history_ids]` (**detach**, không grad qua history) → `[B, 30, 128]` → **masked-mean** (hoặc **weighted theo điểm** nếu `score_pool≠none`, §3.3) theo chiều history → `[B, 128]`; row nào mask rỗng → thay bằng `h_empty`.
 4. `user_tower(pooled, gender_id, joined_bucket)`: concat `[B, 136]` → MLP → L2-norm → `U [B, 128]`.
 
 **Tính cosine để so độ khớp** (U, V đã L2-norm → dot product = cosine), chia temperature τ≈0.07:

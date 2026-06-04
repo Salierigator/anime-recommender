@@ -109,7 +109,7 @@ venv/bin/python scripts/build_train_data/99_verify.py
 
 ### 5.2 Re-index
 - **anime_idx**: `0=PAD` (pad tensor history/hard_neg), `1=OOV/MASK` (id-dropout lúc train + cold serve), real `2..N+1` sort theo `mal_id`. OOV là vector **học được**.
-- **user_idx**: `0..U-1` trên user giữ (sort username). User-id embedding **drop ở v1** (cold-by-user hold-out trọn user → id user lạ vô dụng) → user_idx chỉ là join key, không special slot.
+- **user_idx**: `0..U-1` trên user giữ (sort username). User-id embedding **drop** (cold-by-user hold-out trọn user → id user lạ vô dụng) → user_idx chỉ là join key, không special slot.
 
 ### 5.3 Split — cold-by-user (chống leak)
 - Hold out **trọn user** 90/5/5. Eval (val/test) chỉ nhận user `n_pos ≥ 11` (đủ chia support/query); user 1–10 positive luôn về train. Drop `n_pos==0` (1-positive thì GIỮ → supervise `h_empty`).
@@ -121,7 +121,7 @@ venv/bin/python scripts/build_train_data/99_verify.py
 - `history_scores` lấy từ **cùng các dòng đã sort** với `history_ids` → 2 list song song, không re-join. Tie giữa `score==0` phá bằng stable hash (reproducible).
 - `hard_neg_ids` = dropped item của user, dedup + sort + cap 64 (runtime sample m≈1–5).
 
-### 5.5 Feature encoding (note.txt)
+### 5.5 Feature encoding (scripts/*_audit/)
 
 | Feature | Kind | Vocab/Width | Dim | Missing/OOV |
 |---|---|---|---|---|

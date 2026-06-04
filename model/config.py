@@ -33,6 +33,7 @@ class TwoTowerConfig:
     use_item_id: bool = False        # bật anime-id embedding trong ItemTower
     id_dim: int = 64                 # chiều id-embedding (bảng num_items × id_dim)
     id_dropout: float = 0.2          # prob mask id->OOV mỗi item lúc train (backoff content)
+    score_pool: str = "none"         # weighted history pooling theo điểm: 'none'|'linear'|'learned'
 
     # --- loss ---
     tau: float = 0.07                # temperature

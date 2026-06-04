@@ -44,6 +44,7 @@ def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, batch=512):
         ub = {
             "history_ids": hist,
             "history_mask": hmask,
+            "history_scores": torch.from_numpy(users.history_scores_pad[u]).long().to(device),
             "gender_id": torch.from_numpy(users.gender_id[u]).to(device),
             "joined_bucket": torch.from_numpy(users.joined_bucket[u]).to(device),
         }

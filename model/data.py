@@ -82,6 +82,7 @@ class UserTable:
         self.joined_bucket = np.asarray(d["joined_bucket"], dtype=np.int64)
 
         self.history_pad = _pad_lists(d["history_ids"], k_history)            # [U,30] pad 0
+        self.history_scores_pad = _pad_lists(d["history_scores"], k_history)  # [U,30] pad 0 (align history_pad)
         self.hardneg_pad = _pad_lists(d["hard_neg_ids"], hard_neg_cap)        # [U,64] pad 0
         self.hardneg_len = np.asarray(
             [min(len(x) if x is not None else 0, hard_neg_cap) for x in d["hard_neg_ids"]],
@@ -118,6 +119,7 @@ class Collate:
 
     def __init__(self, users: UserTable, hist_dropout: float, m_hardneg: int):
         self.history_pad = users.history_pad
+        self.history_scores_pad = users.history_scores_pad
         self.hardneg_pad = users.hardneg_pad
         self.hardneg_len = users.hardneg_len
         self.gender_id = users.gender_id
@@ -158,6 +160,7 @@ class Collate:
             "pos": torch.from_numpy(pos),
             "history_ids": torch.from_numpy(hist).long(),
             "history_mask": torch.from_numpy(hist_mask),
+            "history_scores": torch.from_numpy(self.history_scores_pad[u]).long(),
             "hardneg_ids": torch.from_numpy(hn_ids).long(),
             "hardneg_mask": torch.from_numpy(hn_mask),
             "gender_id": torch.from_numpy(self.gender_id[u]),
