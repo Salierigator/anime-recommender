@@ -40,6 +40,7 @@ class TwoTowerConfig:
 
     # --- train ---
     lr: float = 1e-3
+    cosine_lr: bool = False          # True = cosine-anneal LR lr->0 suốt train (thay LR hằng số)
     weight_decay: float = 0.0
     batch_size: int = 4096
     epochs: int = 1

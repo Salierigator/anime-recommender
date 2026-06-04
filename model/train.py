@@ -54,6 +54,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     queries = metrics_mod.group_examples(eval_ds.user_idx, eval_ds.anime_idx)
 
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * cfg.epochs)
+             if cfg.cosine_lr else None)
 
     cfg.ckpt_dir.mkdir(parents=True, exist_ok=True)
     headline = f"recall@{cfg.eval_ks[-1]}"
@@ -103,6 +105,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
             opt.zero_grad()
             loss.backward()
             opt.step()
+            if sched is not None:
+                sched.step()
             if step % cfg.log_every == 0:                  # log loss cho curve + gom để in TB
                 lv = loss.item()
                 history["loss_steps"].append(step)

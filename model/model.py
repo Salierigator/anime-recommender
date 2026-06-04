@@ -99,7 +99,7 @@ class UserTower(nn.Module):
         super().__init__()
         uf = spec["user_features"]
         self.gender_emb = nn.Embedding(uf["gender"]["vocab"], uf["gender"]["dim"], padding_idx=0)
-        self.joined_emb = nn.Embedding(uf["joined"]["vocab"], uf["joined"]["dim"], padding_idx=0)
+        self.joined_emb = nn.Embedding(uf["joined"]["vocab"], uf["joined"]["dim"])
         self.h_empty = nn.Parameter(torch.zeros(d))             # learned, thay pooling khi rỗng
         nn.init.normal_(self.h_empty, std=0.02)
 

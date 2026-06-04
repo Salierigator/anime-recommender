@@ -8,7 +8,7 @@ Doc tổng hợp cho `model/` — giải thích **build cái gì, set up thế n
 
 **Mục tiêu**: stage Retrieval — học 2 tower (user / item) sao cho `cosine(U, V⁺)` cao cho cặp positive, dùng để ANN top-K từ ~22.8k item. Headline metric = **cold-by-user** (hold-out trọn user).
 
-**Philosophy** (khớp `TRAIN_DATA.md §2`): data artifact (cố định, frozen ở `train-data/`) vs model parameter (học, nằm trong checkpoint). Vocab/dim/special-idx đọc từ `train-data/feature_spec.json` — **không hard-code** trong model. Chỉ ma trận embedding + h_empty + MLP + τ là được học.
+**Philosophy** (khớp `TRAIN_DATA.md §2`): data artifact (cố định, frozen ở `train-data/`) vs model parameter (học, nằm trong checkpoint). Vocab/dim/special-idx đọc từ `train-data/feature_spec.json` — **không hard-code** trong model. Tham số học: ma trận embedding + 2 Linear chiếu genres/themes + h_empty + MLP 2 tower. **τ (0.07) và β (1.0) là hyperparam cố định** trong `config.py`, không phải `nn.Parameter`.
 
 **Kết quả smoke** (50k example, 1 epoch, MPS): loss 8.12 → 6.58; eval cold-by-user chạy, checkpoint OK.
 
@@ -44,7 +44,7 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
   anime_idx ─► gather 9 feature              history_ids ─► item_cache lookup (detach, no-grad)
    ├ 6 cat/bucket emb (pad_idx=0) ── 28        └► masked-mean ──────────── 128   (rỗng → h_empty)
    ├ genres  Linear(22→8) ──┐                 gender_id ─► Embedding(4,4) ── 4
-   ├ themes  Linear(53→8) ──┼── 16            joined    ─► Embedding(6,4) ── 4
+   ├ themes  Linear(53→8) ──┼── 16            joined    ─► Embedding(5,4) ── 4
    ├ studios Emb(302,16)→mean ── 16
    └ anime_id Emb(N,64,pad0) ── 64*           *use_item_id (mặc định off);
         concat ────────── 60 (+64 id)          train: id-dropout 0.2 → OOV
@@ -69,7 +69,7 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
 | studios (multi-value) | `nn.Embedding(302, 16)` (**không** padding_idx) → **masked-mean**; id 0 = `empty_id` (studio rỗng, ~28% anime — **học được**, không zeros), pad cấu trúc khử bằng "row toàn 0" rồi mask | 16 |
 | **anime_id** (`use_item_id`, mặc định off) | `nn.Embedding(num_items, id_dim=64, padding_idx=0)` — PAD=0 zeros (no grad), OOV(1) & real(2..) **học**. Bắt collaborative residual content không diễn tả nổi (2 anime trùng feature ≈ vector khác nhau theo audience) | 64 |
 | **concat** | | **60** (off) / **124** (on) |
-| MLP | `Linear(60|124 → 256) → ReLU → Linear(256 → 128)` | 128 |
+| MLP | `Linear(60\|124 → 256) → ReLU → Linear(256 → 128)` | 128 |
 | output | `F.normalize` (L2) | **V [128]** |
 
 - **id-dropout** (`id_dropout=0.2`): lúc train, mỗi real item (`idx≥2`) có prob 0.2 bị mask id→OOV(1) trong nhánh id — **content vẫn gather bằng id thật**. Mục đích kép: (1) dạy vector OOV làm backoff cho anime mới, (2) regularize ép nhánh content luôn tiên đoán được (không thì model dồn hết qua id → content teo → serve anime mới ra rác). Song song `hist_dropout`. Chỉ áp ở candidate path (`encode_items`, có grad); `item_cache` (eval + history pooling) **luôn dùng id thật** (warm).
@@ -83,7 +83,7 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
 |---|---|---|
 | history | mean cached item-vec (detach) theo `history_ids`, masked; row rỗng → `h_empty` | 128 |
 | gender | `nn.Embedding(4, 4, padding_idx=0)` | 4 |
-| joined | `nn.Embedding(6, 4, padding_idx=0)` | 4 |
+| joined | `nn.Embedding(5, 4)` (**không** padding_idx; NULL gộp vào cohort mới nhất 2022+ ở 04 nên cả 5 bucket đều học được, khác `gender` vẫn giữ OOV(0)) | 4 |
 | **concat** | | **136** |
 | MLP | `Linear(136 → 256) → ReLU → Linear(256 → 128)` | 128 |
 | output | `F.normalize` (L2) | **U [128]** |

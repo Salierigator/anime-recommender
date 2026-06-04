@@ -69,7 +69,7 @@ train-data/
 | `themes_multihot` | List[Int8] | width 53 (52 tag + present) |
 | `studio_ids` | List[Int32] | vocab 302, avg-pool ở model |
 
-**`users.parquet`**: `user_idx(Int32)`, `split(str)`, `gender_id(Int8, vocab 4)`, `joined_bucket(Int8, 6)`, `history_ids(List[Int32], ≤30)`, `history_scores(List[Int8], cùng len/order)`, `hard_neg_ids(List[Int32], ≤64)`.
+**`users.parquet`**: `user_idx(Int32)`, `split(str)`, `gender_id(Int8, vocab 4)`, `joined_bucket(Int8, vocab 5)`, `history_ids(List[Int32], ≤30)`, `history_scores(List[Int8], cùng len/order)`, `hard_neg_ids(List[Int32], ≤64)`.
 
 **`examples/`**: `user_idx(Int32)`, `anime_idx(Int32, luôn ≥2)`. Toàn positive → không có cột label. `split` là partition key.
 
@@ -135,7 +135,7 @@ venv/bin/python scripts/build_train_data/99_verify.py
 | themes | multi-hot | 53 | — | 52 tag + 1 present |
 | studios | multi-value | 302 | 16 | 0=empty, 1=OOV, 2..=300 studio (occ≥10); avg-pool list |
 | gender | cat | 4 | 4 | nan → OOV(0) |
-| joined | bucket | 6 | 4 | NULL(0) + 5 cohort |
+| joined | bucket | 5 | 4 | NULL/unparseable gộp vào cohort mới nhất (2022+); không còn slot NULL |
 
 Bucket edges copy **verbatim** từ `scripts/details_audit/` (`start_date` ERA_BINS, `episodes` BUCKET_BINS) và `scripts/profiles_audit/audit_joined.py` (COHORT_BINS) để khớp audit. PAD/OOV item row: mọi feature = neutral 0 (id OOV/NULL, multi-hot toàn 0, `studio_ids=[0]`).
 

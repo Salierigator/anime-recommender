@@ -53,13 +53,13 @@ Doc tổng hợp cho `cleaning.ipynb` — giải thích **clean cái gì, set up
 | File | Size | Rows | Cols |
 |---|---|---|---|
 | `cleaned-data/details.csv` | 12.5 MB | 22,821 | 19 |
-| `cleaned-data/profiles.csv` | 10.9 MB | 292,591 | 5 |
+| `cleaned-data/profiles.csv` | 10.9 MB | 292,591 | 3 |
 | `cleaned-data/ratings.csv` | **3.2 GB** | 120,032,917 | 4 |
 
 ### Schema final
 
 - `details.csv`: `mal_id, title, type, status, score, scored_by, start_date, synopsis, rank, popularity, members, favorites, genres, studios, themes, demographics, source, rating, episodes`
-- `profiles.csv`: `username, gender, birthday, location, joined`
+- `profiles.csv`: `username, gender, joined`
 - `ratings.csv`: `username, anime_id, status, score`
 
 ---
@@ -113,9 +113,11 @@ Doc tổng hợp cho `cleaning.ipynb` — giải thích **clean cái gì, set up
 | `season` | 78% null, derivable từ `start_date.month` |
 | `producers` | 53% empty. Producers ≠ studio (production committee, sponsor). Signal đã có gián tiếp qua `members`/`score`/`studios`. High cardinality + multi-label + noisy |
 
-### `profiles` — drop 5 cols, giữ 5
+### `profiles` — drop 7 cols, giữ 3
 
 `watching, completed, on_hold, dropped, plan_to_watch` — counter aggregate per-status. Đã có raw trong `ratings.csv`, không cần aggregate sẵn.
+
+`birthday, location` cũng bị drop — không dùng làm feature (user tower chỉ ăn `gender` + `joined`).
 
 ### `ratings` — drop 2 cols, giữ 4
 
