@@ -144,6 +144,12 @@ class TwoTower(nn.Module):
         self.score_pool = cfg.score_pool
         if cfg.score_pool == "learned":
             self.score_weight = nn.Embedding(11, 1)
+        # attention pooling history (history_pool='attn'): query học attend qua item-vec, value=item-vec
+        # -> tổ hợp lồi content-aware (vs mean=uniform). Bỏ qua score_pool. item_cache vẫn detach.
+        self.history_pool = cfg.history_pool
+        if cfg.history_pool == "attn":
+            self.attn_key = nn.Linear(self.d, self.d, bias=False)
+            self.attn_query = nn.Parameter(torch.randn(self.d))   # unit-scale: /√d -> logits ~unit-var (không uniform-init)
         self.item_table = item_table                            # tensors trên cùng device
         self.register_buffer("item_cache", torch.zeros(item_table.num_items, cfg.d), persistent=False)
 
@@ -176,11 +182,22 @@ class TwoTower(nn.Module):
         self.train()
 
     # --- user side ---
+    def _attn_pool(self, vecs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Attention pooling: query học attend qua history vecs (reweight theo nội dung, value=vecs).
+        Empty row -> logits 0 (uniform, tránh softmax(all -inf)=NaN; caller ghi đè h_empty)."""
+        logits = (self.attn_key(vecs) @ self.attn_query) / self.d ** 0.5   # [B, L]
+        logits = logits.masked_fill(~mask, float("-inf"))
+        logits = logits.masked_fill(~mask.any(dim=-1, keepdim=True), 0.0)  # row rỗng -> uniform (NaN-safe)
+        attn = torch.softmax(logits, dim=-1)                               # [B, L]
+        return (attn.unsqueeze(-1) * vecs).sum(dim=-2)                     # [B, d]
+
     def pool_history(self, history_ids, history_mask, history_scores=None) -> torch.Tensor:
         """Pool cached item-vec theo history (detach, no grad qua history path). Row mask rỗng -> h_empty.
-        score_pool: none=mean; linear=weight score.clamp(min=1); learned=softplus(emb[score])."""
+        history_pool: mean (theo score_pool none/linear/learned) | attn (learned-query attention, bỏ qua score)."""
         vecs = self.item_cache[history_ids].detach()           # [B, L, d]
-        if self.score_pool == "none" or history_scores is None:
+        if self.history_pool == "attn":
+            pooled = self._attn_pool(vecs, history_mask)       # [B, d]
+        elif self.score_pool == "none" or history_scores is None:
             pooled = _masked_mean(vecs, history_mask)          # [B, d]
         else:
             if self.score_pool == "learned":
