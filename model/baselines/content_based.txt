@@ -1,0 +1,11 @@
+# Content-based baseline (mean + IDF) — split=test
+# generated 2026-06-05T12:00:41  device=mps
+# users evaluated: 13,790   candidates (finite logq): 22,821   content_dim: 423
+
+recall@10   = 0.038358
+recall@50   = 0.099804
+recall@100  = 0.147807
+
+ndcg@10     = 0.100409
+ndcg@50     = 0.099985
+ndcg@100    = 0.116407

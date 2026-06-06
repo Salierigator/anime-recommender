@@ -1,0 +1,51 @@
+Total anime: 22,821
+
+==================================================
+CROSS-CONSISTENCY (null patterns)
+==================================================
+score NaN == scored_by NaN:   True
+score NaN == rank NaN:        False
+
+NaN combination breakdown (S=score, B=scored_by, R=rank):
+  S=0 B=0 R=0: 14,301  (62.67%)
+  S=0 B=0 R=1:  4,520  (19.81%)
+  S=1 B=1 R=0:  2,965  (12.99%)
+  S=1 B=1 R=1:  1,035  ( 4.54%)
+
+Has score but no rank: 4,520
+
+==================================================
+INVESTIGATE: no score+scored_by nhưng có rank
+==================================================
+Total rows: 2,965  (12.99%)
+
+Breakdown by type:
+  Movie       :   812  (27.39%)
+  TV          :   789  (26.61%)
+  ONA         :   732  (24.69%)
+  OVA         :   346  (11.67%)
+  Special     :   166  ( 5.60%)
+  TV Special  :   119  ( 4.01%)
+  nan         :     1  ( 0.03%)
+
+Sample 10 rows (sorted by rank ascending):
+     rank    members     pop  type        title
+   14,325        214  22,140  Movie       'Riku ni Agatta Ningyo no Hanashi Pilot'
+   14,329        356  19,630  TV          'Riseman'
+   14,329        332  20,017  Movie       'Riku wa Yowakunai'
+   14,330        348  19,774  Movie       'Ring Ring Boy'
+   14,333        443  18,446  TV          'Robin-kun to 100 nin no Otomodachi'
+   14,334        408  18,942  TV          'Robin-kun to 100 nin no Otomodachi Season 2'
+   14,335        224  21,927  Special     'Robinson Crusoe: Mujintou no Bouken'
+   14,335        497  17,794  TV          'Robby to Kerobby'
+   14,338        528  17,455  TV          'RoboDz'
+   14,340        518  17,573  TV Special  'Robot Pulta'
+
+Rank distribution của nhóm này:
+  p 5:   14,703
+  p25:   16,155
+  p50:   18,526
+  p75:   20,302
+  p95:   21,622
+  min:    14,325
+  max:    22,020

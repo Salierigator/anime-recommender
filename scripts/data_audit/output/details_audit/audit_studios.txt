@@ -1,0 +1,101 @@
+Total anime: 22,821
+
+============================================================
+STUDIOS
+============================================================
+NaN:                0  ( 0.00%)
+'[]' (empty):   6,490  (28.44%)
+Total missing:  6,490  (28.44%)
+Parse failure:      0  (non-NaN nhưng literal_eval lỗi)
+
+Non-empty rows: 16,331
+Unique tags:    1,237
+Total tag occurrences: 17,794
+
+Top 30 tags:
+    899  'Toei Animation'
+    580  'Sunrise'
+    439  'J.C.Staff'
+    381  'Madhouse'
+    372  'TMS Entertainment'
+    355  'Production I.G'
+    324  'Studio Deen'
+    306  'OLM'
+    288  'Studio Pierrot'
+    269  'Shin-Ei Animation'
+    255  'A-1 Pictures'
+    227  'Nippon Animation'
+    199  'AIC'
+    197  'DLE'
+    188  'Tatsunoko Production'
+    161  'Bones'
+    154  'Xebec'
+    152  'Shaft'
+    147  'T-Rex'
+    144  'Gonzo'
+    133  'Kyoto Animation'
+    129  'SILVER LINK.'
+    118  'LIDENFILMS'
+    115  'AQUA ARIS'
+    114  'Satelight'
+    114  "Brain's Base"
+    110  'Arms'
+    108  'MAPPA'
+    107  'Seven'
+    104  'Group TAC'
+
+List length distribution (non-empty rows only):
+  p 25:   1
+  p 50:   1
+  p 75:   1
+  p 90:   1
+  p 95:   2
+  p 99:   2
+  min:    1
+  max:   12
+
+Single-tag lists: 15,045  (92.13% of non-empty)
+  Top 10 single-tag values (default-suspect):
+      863  'Toei Animation'
+      558  'Sunrise'
+      411  'J.C.Staff'
+      343  'Madhouse'
+      341  'TMS Entertainment'
+      302  'Studio Deen'
+      272  'Studio Pierrot'
+      271  'Production I.G'
+      259  'OLM'
+      246  'Shin-Ei Animation'
+
+Coverage CDF (top-N tags) cho long-tail column:
+     N    mass%     row%  bucket_other (1-mass%)
+    10   23.68%   25.58%                  76.32%
+    25   37.35%   40.06%                  62.65%
+    50   49.66%   52.68%                  50.34%
+   100   63.94%   67.41%                  36.06%
+   200   77.35%   80.30%                  22.65%
+   500   92.03%   93.41%                   7.97%
+
+Ngưỡng cắt embed_id — occurrence count tại từng rank:
+  rank   50: count =   72  ('Studio 9 Maiami')
+  rank  100: count =   36  ('Passione')
+  rank  150: count =   23  ('Big Firebird Culture')
+  rank  200: count =   17  ('Kitty Film Mitaka Studio')
+  rank  250: count =   12  ('Imageworks Studio')
+  rank  300: count =   10  ('DAX Production')
+  rank  500: count =    5  ('Piso Studio')
+
+Phân phối tag theo bin tần suất:
+  count   =1:   357 tag(s)  |  cover  2.14% non-empty rows
+  count   =2:   172 tag(s)  |  cover  2.08% non-empty rows
+  count  3-4:   204 tag(s)  |  cover  4.19% non-empty rows
+  count  5-9:   204 tag(s)  |  cover  8.19% non-empty rows
+  count >=10:   300 tag(s)  |  cover 86.53% non-empty rows
+
+Bảng quyết định ngưỡng (giữ tag count >= min_count, còn lại → OOV):
+  min_count  vocab(kept)   row%kept   row%OOV
+          2          880     98.38%     1.62%
+          3          708     96.71%     3.29%
+          5          504     93.50%     6.50%
+         10          300     86.53%    13.47%
+

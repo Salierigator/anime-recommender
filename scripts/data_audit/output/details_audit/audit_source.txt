@@ -1,0 +1,27 @@
+Total anime: 22,821
+
+==================================================
+SOURCE
+==================================================
+NaN:              0  ( 0.00%)
+Cardinality:     17
+
+Full value distribution:
+   7,916  (34.69%)  'Original'
+   5,414  (23.72%)  'Manga'
+   1,924  ( 8.43%)  'Unknown'  ← default-suspect
+   1,361  ( 5.96%)  'Game'
+   1,199  ( 5.25%)  'Light novel'
+   1,160  ( 5.08%)  'Visual novel'
+   1,024  ( 4.49%)  'Other'
+     752  ( 3.30%)  'Novel'
+     627  ( 2.75%)  'Web manga'
+     331  ( 1.45%)  '4-koma manga'
+     235  ( 1.03%)  'Music'
+     217  ( 0.95%)  'Web novel'
+     214  ( 0.94%)  'Mixed media'
+     188  ( 0.82%)  'Picture book'
+     168  ( 0.74%)  'Book'
+      79  ( 0.35%)  'Card game'
+      12  ( 0.05%)  'Radio'
+

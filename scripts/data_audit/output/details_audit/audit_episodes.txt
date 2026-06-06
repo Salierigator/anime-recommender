@@ -1,0 +1,95 @@
+Total anime: 22,821
+
+==================================================
+EPISODES
+==================================================
+NaN:         652  ( 2.86%)
+Present:  22,169  (97.14%)
+== 0:          0
+
+Distribution:
+  p    1:      1.0
+  p    5:      1.0
+  p   25:      1.0
+  p   50:      2.0
+  p   75:     12.0
+  p   95:     49.0
+  p   99:    104.0
+  p 99.9:    469.1
+  min:        1.0
+  max:    3,000.0
+  mean:      11.3
+
+Top 20 most common episode counts:
+     1 ep: 10,858  (48.98%)
+    12 ep: 2,241  (10.11%)
+     2 ep: 1,595  ( 7.19%)
+    13 ep: 1,008  ( 4.55%)
+     3 ep:   724  ( 3.27%)
+    26 ep:   721  ( 3.25%)
+     4 ep:   571  ( 2.58%)
+     6 ep:   420  ( 1.89%)
+    24 ep:   350  ( 1.58%)
+    10 ep:   292  ( 1.32%)
+    52 ep:   283  ( 1.28%)
+    25 ep:   233  ( 1.05%)
+     5 ep:   227  ( 1.02%)
+     8 ep:   176  ( 0.79%)
+    11 ep:   162  ( 0.73%)
+    16 ep:   133  ( 0.60%)
+    50 ep:   130  ( 0.59%)
+    51 ep:   126  ( 0.57%)
+     7 ep:   124  ( 0.56%)
+    20 ep:   112  ( 0.51%)
+
+==================================================
+BUCKET DISTRIBUTION (đề xuất layout)
+==================================================
+Trên non-NaN rows (n=22,169):
+  1 (one-shot/movie)     10,858  (48.98%)
+  2 (pair)                1,595  ( 7.19%)
+  3-6 (short/OVA)         1,942  ( 8.76%)
+  7-13 (1-cua)            4,090  (18.45%)
+  14-26 (2-cua)           1,908  ( 8.61%)
+  27-52 (long/4-cua)      1,241  ( 5.60%)
+  53+ (long-running)        535  ( 2.41%)
+
+Trên toàn catalog (gồm NaN = Null slot, n=22,821):
+  1 (one-shot/movie)     10,858  (47.58%)
+  2 (pair)                1,595  ( 6.99%)
+  3-6 (short/OVA)         1,942  ( 8.51%)
+  7-13 (1-cua)            4,090  (17.92%)
+  14-26 (2-cua)           1,908  ( 8.36%)
+  27-52 (long/4-cua)      1,241  ( 5.44%)
+  53+ (long-running)        535  ( 2.34%)
+  NULL (NaN)                652  ( 2.86%)
+
+==================================================
+KIỂM TRA RANH GIỚI (count quanh mỗi đường cắt)
+==================================================
+  cắt sau  2 ->  1ep:10,858  2ep:1,595  3ep:724  4ep:571
+  cắt sau  6 ->  5ep:227  6ep:420  7ep:124  8ep:176
+  cắt sau 13 ->  12ep:2,241  13ep:1,008  14ep:65  15ep:73
+  cắt sau 26 ->  25ep:233  26ep:721  27ep:27  28ep:15
+  cắt sau 52 ->  51ep:126  52ep:283  53ep:9  54ep:15
+
+(Nếu ngay cạnh đường cắt có đỉnh lớn bị tách đôi (vd 12 và 13 cùng cao
+ mà rơi 2 bucket) thì cân nhắc dịch ranh giới cho đỉnh nằm trọn 1 bucket.)
+
+==================================================
+ANOMALIES
+==================================================
+Episodes == 0:      0  (đáng nghi — anime tồn tại nhưng 0 ep)
+Episodes > 500:    19  (long-running shounen?)
+
+  Top entries với episodes > 500:
+     3000 ep  type=TV          status=Finished Airing
+     1818 ep  type=TV          status=Finished Airing
+     1787 ep  type=TV          status=Finished Airing
+     1717 ep  type=TV          status=Finished Airing
+     1565 ep  type=TV          status=Finished Airing
+     1471 ep  type=TV          status=Finished Airing
+     1428 ep  type=TV          status=Finished Airing
+     1306 ep  type=TV          status=Finished Airing
+     1274 ep  type=TV          status=Finished Airing
+     1006 ep  type=TV          status=Finished Airing

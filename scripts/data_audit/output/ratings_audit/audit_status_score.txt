@@ -1,0 +1,70 @@
+Total ratings rows: 120,032,917
+
+============================================================
+A. STATUS — count + % trên tổng số dòng
+============================================================
+     76,294,824  (63.562%)  'completed'
+     30,943,021  (25.779%)  'plan_to_watch'
+      5,404,167  ( 4.502%)  'watching'
+      4,242,993  ( 3.535%)  'dropped'
+      3,147,912  ( 2.623%)  'on_hold'
+
+============================================================
+B. SCORE — phân bố từng giá trị (score==0 = 'unrated'?)
+============================================================
+  score      0:     52,151,920  (43.448%)
+  score      1:        629,547  ( 0.524%)
+  score      2:        680,150  ( 0.567%)
+  score      3:      1,147,537  ( 0.956%)
+  score      4:      2,205,689  ( 1.838%)
+  score      5:      4,620,539  ( 3.849%)
+  score      6:      8,648,648  ( 7.205%)
+  score      7:     16,001,931  (13.331%)
+  score      8:     16,839,614  (14.029%)
+  score      9:     10,248,725  ( 8.538%)
+  score     10:      6,858,617  ( 5.714%)
+
+  score==0      :    52,151,920  (43.448%)
+  score==null   :             0  ( 0.000%)
+  score>=1 (rated):  67,880,997  (56.552%)
+  score>=7 (positive): 49,948,887  (41.613% tổng | 73.583% trong số đã chấm)
+
+============================================================
+C. STATUS × SCORE — score có đầy đủ ngoài completed không?
+============================================================
+status                      n    %zero   %rated   %pos≥7  mean(rated)
+completed          76,294,824   16.23%   83.77%   63.08%         7.40
+plan_to_watch      30,943,021   99.40%    0.60%    0.45%         7.49
+watching            5,404,167   78.73%   21.27%   17.07%         7.68
+dropped             4,242,993   54.80%   45.20%    6.21%         4.55
+on_hold             3,147,912   77.13%   22.87%   15.81%         7.06
+
+  => Nếu %rated của các status non-completed RẤT thấp còn completed cao
+     => score chủ yếu sống ở completed; score==0 ở các status khác = 'chưa chấm'.
+     Nếu completed cũng có %zero đáng kể => pool positive thưa hơn tưởng.
+
+============================================================
+D. POSITIVE POOL / USER  (positive = score>=7)
+============================================================
+Tổng user: 292,591
+
+[completed-only]  mean=164.48   p10=3  p25=33  p50=103  p75=219  p90=391
+   user có 0 positive:    21,567  ( 7.37%)
+   user có >= 1  positive:   271,024  (92.63%)
+   user có >= 3  positive:   263,802  (90.16%)
+   user có >= 5  positive:   259,862  (88.81%)
+   user có >= 10 positive:   251,288  (85.88%)
+   user có >= 20 positive:   236,587  (80.86%)
+
+[mọi status]  mean=170.71   p10=5  p25=36  p50=108  p75=227  p90=403
+   user có 0 positive:    17,087  ( 5.84%)
+   user có >= 1  positive:   275,504  (94.16%)
+   user có >= 3  positive:   267,590  (91.46%)
+   user có >= 5  positive:   263,351  (90.01%)
+   user có >= 10 positive:   254,832  (87.09%)
+   user có >= 20 positive:   239,930  (82.00%)
+
+Tổng positive (completed-only): 48,125,325
+Tổng positive (mọi status):     49,948,887
+  => mở rộng status thêm 1,823,562 positive (+3.79%)
+  user được THÊM >=1 positive nhờ non-completed: 198,890  (67.98%)

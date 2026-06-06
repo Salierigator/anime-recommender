@@ -1,0 +1,17 @@
+Total anime: 22,821
+
+==================================================
+RATING
+==================================================
+NaN:            543  ( 2.38%)
+Cardinality:      6
+
+Full value distribution:
+   9,656  (42.31%)  'PG-13 - Teens 13 or older'
+   6,675  (29.25%)  'G - All Ages'
+   1,614  ( 7.07%)  'PG - Children'
+   1,583  ( 6.94%)  'Rx - Hentai'
+   1,551  ( 6.80%)  'R - 17+ (violence & profanity)'
+   1,199  ( 5.25%)  'R+ - Mild Nudity'
+     543  ( 2.38%)  nan
+

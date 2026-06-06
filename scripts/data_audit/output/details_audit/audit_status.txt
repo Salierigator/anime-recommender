@@ -1,0 +1,13 @@
+Total anime: 22,821
+
+==================================================
+STATUS
+==================================================
+NaN:              0  ( 0.00%)
+Cardinality:      3
+
+Full value distribution:
+  21,998  (96.39%)  'Finished Airing'
+     535  ( 2.34%)  'Not yet aired'  ← default-suspect
+     288  ( 1.26%)  'Currently Airing'
+

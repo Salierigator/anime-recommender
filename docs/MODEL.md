@@ -81,7 +81,7 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
 
 | Nhánh feature | Layer | Out dim |
 |---|---|---|
-| history | pool cached item-vec (detach) theo `history_ids`, masked; **mean** (mặc định) hoặc **weighted theo điểm** (`score_pool`, xem dưới); row rỗng → `h_empty` | 128 |
+| history | pool cached item-vec (detach) theo `history_ids`, masked; cách gộp = `history_pool` (**mean** mặc định, ±`score_pool`; hoặc **attn** = learned-query attention, xem dưới); row rỗng → `h_empty` | 128 |
 | gender | `nn.Embedding(4, 4, padding_idx=0)` | 4 |
 | joined | `nn.Embedding(5, 4)` (**không** padding_idx; NULL gộp vào cohort mới nhất 2022+ ở 04 nên cả 5 bucket đều học được, khác `gender` vẫn giữ OOV(0)) | 4 |
 | **concat** | | **136** |
@@ -96,6 +96,9 @@ Cả 2 tower → vector `d=128`, **L2-normalize** (→ score = cosine). MLP mỗ
   - `learned` — `w = softplus(Embedding(11,1)[score])`, trọng số dương **học** per mức điểm 0..10 (11 bucket; pad bị mask nên không cần padding_idx).
 
   Weighted-mean = `Σ(mask·w·v) / Σ(mask·w)`; softplus/clamp ⇒ w>0 ⇒ không chia 0; row rỗng vẫn → `h_empty`. **Vì sao learned hợp hơn**: điểm lệch mạnh (77.6% là 9–10, 9.36% chưa chấm) → `linear` gần vô tác dụng ở khối 9–10 (10 vs 9 = 1.11×); `learned` để data tự quyết. Trọng số per-bucket **chung mọi user** (per-user normalization để sau). Áp cho cả train (collate) lẫn eval (`metrics.py`).
+
+  **Kết quả đo (v3)**: `score_pool` trung tính — ep6 `learned` test r@100 0.3964 ≈ `none` 0.3965; ep1 `linear` 0.3735 < `learned` 0.3769 ≈ `none`. Tức cho tự do thì model dẹt trọng số về ≈ mean: **độ lớn điểm (giữa các phim đã-thích) không thêm tín hiệu retrieval** ngoài membership. → chuyển sang reweight theo **nội dung** (`history_pool='attn'`).
+- **Attention pooling** (`history_pool`, mặc định `mean`): `attn` thay masked-mean bằng **learned-query attention** trên history — 1 query học `q[128]` + key-proj `Linear(128,128,bias=False)`, `attn = softmax((W·v)·q / √128)` (mask pad = −inf; row rỗng fill logits 0 cho NaN-safe), `pooled = Σ attn·v` (**value = chính item-vec** → vẫn tổ hợp lồi cùng không gian ⇒ so trực tiếp với mean = uniform). Query init **unit-scale** (`/√d` ⇒ logits ~unit-var, attend thật từ step 0, không khởi-tạo-bằng-mean). `item_cache` vẫn **detach** (query/key học, item-vec đóng băng). **Bỏ qua `score_pool`** (attention chính là cách gộp). Động cơ: cold-by-user nghẽn ở user-vec = 1 centroid mean; `score_pool` đã chứng minh reweight theo **điểm** vô tác dụng → `attn` reweight theo **nội dung** (item nào đáng tóm tắt), trục khác hẳn.
 
 ### 3.4 Item-vec cache
 
@@ -121,7 +124,7 @@ Mỗi example = `(user_idx, pos_item)`. Batch B → B user, B positive.
 1 batch B example chạy qua `TwoTower.forward(batch)` → ra 2 ma trận score. Input tensor (collate §4 dựng):
 
 - `pos [B]`, `hardneg_ids [B,m]`, `hardneg_mask [B,m]`
-- `history_ids [B,30]`, `history_mask [B,30]` (đã gỡ anchor + bỏ pad + áp dropout), `history_scores [B,30]` (align `history_ids`, cho weighted pooling)
+- `history_ids [B,30]`, `history_mask [B,30]` (đã gỡ anchor + bỏ pad + áp dropout), `history_scores [B,30]` (align `history_ids`, cho weighted pooling `score_pool`; `attn` không dùng)
 - `gender_id [B]`, `joined_bucket [B]`
 
 **Item side** (fresh, **có grad** — đây là path được supervise):
@@ -129,7 +132,7 @@ Mỗi example = `(user_idx, pos_item)`. Batch B → B user, B positive.
 2. `V_hn = encode_items(hardneg_ids)`: flatten `[B·m]` → ItemTower → reshape `[B, m, 128]`.
 
 **User side**:
-3. `pool_history(history_ids, history_mask, history_scores)`: lookup `item_cache[history_ids]` (**detach**, không grad qua history) → `[B, 30, 128]` → **masked-mean** (hoặc **weighted theo điểm** nếu `score_pool≠none`, §3.3) theo chiều history → `[B, 128]`; row nào mask rỗng → thay bằng `h_empty`.
+3. `pool_history(history_ids, history_mask, history_scores)`: lookup `item_cache[history_ids]` (**detach**, không grad qua history) → `[B, 30, 128]` → gộp theo `history_pool`: **masked-mean** (±**weighted theo điểm** nếu `score_pool≠none`) hoặc **attention** (`attn`), §3.3 → `[B, 128]`; row nào mask rỗng → thay bằng `h_empty`.
 4. `user_tower(pooled, gender_id, joined_bucket)`: concat `[B, 136]` → MLP → L2-norm → `U [B, 128]`.
 
 **Tính cosine để so độ khớp** (U, V đã L2-norm → dot product = cosine), chia temperature τ≈0.07:

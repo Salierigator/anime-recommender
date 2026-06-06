@@ -1,0 +1,11 @@
+# MF (implicit ALS, factors=64, iters=15) + fold-in — split=test  (trained on split=train)
+# generated 2026-06-06T23:20:39  device=mps
+# users evaluated: 13,790   candidates (finite logq): 22,821
+
+recall@10   = 0.113957
+recall@50   = 0.275195
+recall@100  = 0.378101
+
+ndcg@10     = 0.287643
+ndcg@50     = 0.281226
+ndcg@100    = 0.316922

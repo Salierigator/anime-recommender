@@ -1,0 +1,11 @@
+# ItemKNN (item-item cosine, K=200) baseline — split=test  (co-occurrence on split=train)
+# generated 2026-06-05T12:01:49  device=mps
+# users evaluated: 13,790   candidates (finite logq): 22,821   sim nnz: 4,388,861
+
+recall@10   = 0.081085
+recall@50   = 0.216305
+recall@100  = 0.317922
+
+ndcg@10     = 0.223175
+ndcg@50     = 0.223365
+ndcg@100    = 0.259923

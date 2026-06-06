@@ -7,3 +7,5 @@ ipykernel
 polars
 pyarrow
 torch
+scipy
+implicit

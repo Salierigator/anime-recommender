@@ -1,0 +1,75 @@
+Total anime: 22,821
+
+============================================================
+THEMES
+============================================================
+NaN:                0  ( 0.00%)
+'[]' (empty):   8,670  (37.99%)
+Total missing:  8,670  (37.99%)
+Parse failure:      0  (non-NaN nhưng literal_eval lỗi)
+
+Non-empty rows: 14,151
+Unique tags:    52
+Total tag occurrences: 21,100
+
+Top 30 tags:
+  3,727  'Music'
+  2,158  'School'
+  1,493  'Historical'
+  1,195  'Mecha'
+    760  'Parody'
+    714  'Adult Cast'
+    699  'Military'
+    685  'Martial Arts'
+    665  'Super Power'
+    622  'Mythology'
+    610  'Space'
+    486  'Harem'
+    462  'Anthropomorphic'
+    454  'Isekai'
+    446  'Psychological'
+    356  'Idols (Female)'
+    344  'Mahou Shoujo'
+    331  'Strategy Game'
+    312  'Team Sports'
+    306  'Detective'
+    270  'Gag Humor'
+    265  'Gore'
+    260  'CGDCT'
+    252  'Samurai'
+    223  'Racing'
+    218  'Workplace'
+    210  'Urban Fantasy'
+    183  'Iyashikei'
+    179  'Vampire'
+    169  'Idols (Male)'
+
+List length distribution (non-empty rows only):
+  p 25:   1
+  p 50:   1
+  p 75:   2
+  p 90:   3
+  p 95:   3
+  p 99:   4
+  min:    1
+  max:    6
+
+Single-tag lists: 8,972  (63.40% of non-empty)
+  Top 10 single-tag values (default-suspect):
+    2,751  'Music'
+      850  'School'
+      669  'Historical'
+      527  'Mecha'
+      289  'Parody'
+      262  'Mythology'
+      244  'Martial Arts'
+      242  'Anthropomorphic'
+      239  'Super Power'
+      217  'Mahou Shoujo'
+
+Coverage CDF (top-N tags) cho long-tail column:
+     N    mass%     row%  bucket_other (1-mass%)
+    10   60.27%   75.21%                  39.73%
+    25   85.76%   92.96%                  14.24%
+    50   99.72%   99.87%                   0.28%
+

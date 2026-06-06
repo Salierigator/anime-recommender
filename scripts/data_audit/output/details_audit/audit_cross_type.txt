@@ -1,0 +1,50 @@
+Total anime: 22,821
+
+==================================================
+CROSS-TAB: type vs (status, source, rating)
+==================================================
+
+  type × status:
+status      Currently Airing  Finished Airing  Not yet aired
+type                                                        
+CM                         8              433              0
+Movie                      5             3656             88
+Music                      3             2679              0
+ONA                      113             3015             94
+OVA                       64             3790             13
+PV                        10              230              0
+Special                    3             1654              1
+TV                        68             5842            274
+TV Special                13              698              2
+NaN                        1                1             63
+
+
+  type × source:
+source      4-koma manga  Book  Card game  Game  Light novel  Manga  Mixed media  Music  Novel  Original  Other  Picture book  Radio  Unknown  Visual novel  Web manga  Web novel
+type                                                                                                                                                                             
+CM                     0     2          1    28            7     74            3      1      1       250     60             1      0       10             0          3          0
+Movie                 22    88          4   147           97    700           21     12    171      1597    205            60      2      570            26         26          1
+Music                  1     1          0   145            9     45           69    186     11      2055     75             3      0       64             7         11          0
+ONA                   33     7         11   336           93    462           21      9    243      1173    216            21      3      124            21        235        214
+OVA                   37    14          2   150          140   1358            6      4     73       627    109            12      1      497           818         19          0
+PV                     1     1          5    71           12     42            1      1      2        64     17             1      0        0             0         22          0
+Special               62     9          2   105          140    550            7      3     29       479     40             7      1       89           101         34          0
+TV                   165    43         49   323          630   1948           79     18    167      1510    267            79      5      464           172        263          2
+TV Special             9     3          5    50           56    219            5      1     52       151     31             4      0      103            15          9          0
+NaN                    1     0          0     6           15     16            2      0      3        10      4             0      0        3             0          5          0
+
+
+  type × rating:
+rating      G - All Ages  PG - Children  PG-13 - Teens 13 or older  R - 17+ (violence & profanity)  R+ - Mild Nudity  Rx - Hentai  NaN
+type                                                                                                                                  
+CM                   347              6                         88                               0                 0            0    0
+Movie               1500            452                       1178                             265               217            4  133
+Music               1563             51                       1000                              35                31            0    2
+ONA                  915            147                       1756                             204                42           71   87
+OVA                  512             95                       1029                             242               479         1480   30
+PV                    97             11                        118                              10                 3            0    1
+Special              365             98                        957                              87               115           28    8
+TV                  1188            674                       3182                             620               290            0  230
+TV Special           187             80                        340                              84                22            0    0
+NaN                    1              0                          8                               4                 0            0   52
+

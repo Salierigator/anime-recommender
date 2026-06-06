@@ -1,0 +1,67 @@
+Total anime: 22,821
+
+==================================================
+TITLE
+==================================================
+NaN:           0  ( 0.00%)
+Empty:         0  ( 0.00%)
+Present:  22,821  (100.00%)
+
+Title length (chars):
+  p   50:   22
+  p   75:   33
+  p   90:   47
+  p   95:   56
+  p   99:   77
+  p 99.9:  109
+  min  :    1
+  max  :  186
+
+Duplicate titles (>=2 anime share same title): 2 groups, 4 anime
+  Top 10 most-shared titles:
+      2x  'Shen Lan Qi Yu Wushuang Zhu: Tianmo Pian'
+      2x  'Moonlight'
+      1x  '-Socket-'
+      1x  'Phantom The Animation'
+      1x  'Phi Brain: Kami no Puzzle - Shukuteki! Rätsel-hen'
+      1x  'Phi Brain: Kami no Puzzle - Orpheus Order-hen'
+      1x  'Phi Brain: Kami no Puzzle'
+      1x  'Phase Connect Nihon Jouriku!! Phase KALEiDO Debut!'
+      1x  'Phantomi: Mini Anime'
+      1x  'Phantom: Requiem for the Phantom Picture Drama'
+
+Placeholder-suspect titles (unknown/untitled/tba/...): 0
+
+All-digit titles: 13
+  '001'
+  '1135'
+  '123'
+  '1985'
+  '1989'
+  '2'
+  '2005'
+  '2010'
+  '32'
+  '3341'
+
+Very short titles (<=2 chars): 20
+  '2'
+  '32'
+  '86'
+  '9'
+  'Ai'
+  '◯'
+  'C³'
+  'CP'
+  'El'
+  'F'
+  'H2'
+  'K'
+  'M'
+  'OZ'
+  'Po'
+  'Q'
+  'TO'
+  'We'
+  'X'
+  'Ys'
