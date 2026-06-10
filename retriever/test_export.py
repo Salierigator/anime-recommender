@@ -1,9 +1,15 @@
 """Test artifacts của export.py: dựng lại user-encoder TỪ artifacts (như service sẽ làm)
--> chạy eval cold-by-user trên tập test (+ val để đối chiếu) -> in recall@K / ndcg@K.
+-> chạy eval protocol đầy đủ (mask = seen − query) trên warm val/test + cold val.
 
 Firewall-faithful: chỉ đọc `artifacts/` (item_vectors.npy + user_tower.pt) + import *định nghĩa*
 model (UserTower, _masked_mean) — KHÔNG load best.pt để encode. Tái dùng nguyên `metrics.evaluate`
 nên số liệu so sánh trực tiếp được với lúc train.
+
+Đọc kết quả:
+  - [val warm] ~khớp metrics ghi trong best.pt (lệch nhẹ vài phần nghìn là bình thường:
+    artifact cache encode row H bằng OOV — serve-path — còn lúc train warm cache dùng id thật).
+  - [val cold] phải ~khớp log run_cold_eval (cell cold trong notebook) — cache giống hệt.
+  - test_cold KHÔNG đụng ở đây (final exam, chấm 1 lần khi chốt model).
 
     python retriever/test_export.py [--out artifacts] [--device cpu]
 """
@@ -20,8 +26,8 @@ SRC = Path(__file__).resolve().parent / "src"
 sys.path.insert(0, str(SRC))
 
 import config  # noqa: E402
-from data import ExamplesDataset, UserTable, load_feature_spec, load_logq  # noqa: E402
-from metrics import evaluate, group_examples  # noqa: E402
+from data import UserTable, load_feature_spec, load_logq  # noqa: E402
+from metrics import evaluate, load_eval_protocol  # noqa: E402
 from model import UserTower, _masked_mean  # noqa: E402
 
 
@@ -31,14 +37,17 @@ class ArtifactEncoder:
 
     def __init__(self, out: Path, device: str):
         ut = torch.load(out / "user_tower.pt", map_location=device, weights_only=False)
-        if ut["history_pool"] != "mean" or ut["score_pool"] != "none":
+        if (ut["history_pool"], ut["score_pool"], ut.get("history_source", "cache")) != ("mean", "none", "cache"):
             raise SystemExit(
-                f"test_export chỉ hỗ trợ history_pool='mean'/score_pool='none' "
-                f"(artifact: {ut['history_pool']}/{ut['score_pool']}) — mở rộng pooling nếu config đổi.")
+                f"test_export chỉ hỗ trợ history_pool=mean/score_pool=none/history_source=cache "
+                f"(artifact: {ut['history_pool']}/{ut['score_pool']}/{ut.get('history_source')}) "
+                "— mở rộng pooling nếu config đổi.")
+        self.eval_history_cap = ut.get("eval_history_cap", 1024)
         self.item_cache = torch.from_numpy(np.load(out / "item_vectors.npy")).to(device)
         self.tower = UserTower({"user_features": ut["user_features"]}, ut["d"], ut["mlp_hidden"]).to(device)
         self.tower.load_state_dict(
-            {k.replace("user_tower.", ""): v for k, v in ut["state_dict"].items()})
+            {k.replace("user_tower.", ""): v for k, v in ut["state_dict"].items()
+             if k.startswith("user_tower.")})
         self.tower.eval()
 
     def eval(self):
@@ -56,45 +65,46 @@ class ArtifactEncoder:
         return self.tower(pooled, batch["gender_id"], batch["joined_bucket"])
 
 
-def queries_for(split: str, users: UserTable) -> dict:
-    """Examples của split -> {user_idx: [anime_idx query]}, chỉ giữ user có trong split đó."""
-    ex = ExamplesDataset(config.TRAIN_DATA, split)
-    return group_examples(np.asarray(ex.user_idx), np.asarray(ex.anime_idx))
-
-
 def fmt(m: dict, ks) -> str:
-    cols = " | ".join(f"recall@{k} {m[f'recall@{k}']:.4f}  ndcg@{k} {m[f'ndcg@{k}']:.4f}" for k in ks)
-    return f"{cols}   (n_users={m['n_users']})"
+    cols = " ".join(f"r@{k}={m[f'recall@{k}']:.4f}" for k in ks)
+    nd = " ".join(f"ndcg@{k}={m[f'ndcg@{k}']:.4f}" for k in (10, 200))
+    return f"{cols}  {nd}  (n_users={m['n_users']:,})"
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Eval artifacts export trên test/val split")
+    ap = argparse.ArgumentParser(description="Eval artifacts export theo protocol đầy đủ")
     ap.add_argument("--out", type=Path, default=config.ROOT.parent / "artifacts")
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
-    ks = [10, 50, 100]
+    ks = [10, 50, 100, 200, 500]
     spec = load_feature_spec(config.TRAIN_DATA)
-    users = UserTable(config.TRAIN_DATA, spec["k_history"], spec["hard_neg_cap"])
+    users = UserTable(config.TRAIN_DATA, spec["hard_neg_cap"])
     logq = load_logq(config.TRAIN_DATA).to(args.device)
     enc = ArtifactEncoder(args.out, args.device)
+    cap = enc.eval_history_cap
 
-    print(f"Eval bằng artifacts ({args.out}) — encoder dựng từ user_tower.pt + item_vectors.npy\n")
-    for split in ("test", "val"):
-        m = evaluate(enc, users, queries_for(split, users), logq, ks)
-        print(f"[{split:4s}] {fmt(m, ks)}")
+    print(f"Eval bằng artifacts ({args.out}) — encoder từ user_tower.pt + item_vectors.npy "
+          f"(history cap {cap})\n")
+    for split in ("val", "test"):
+        q_warm, m_warm, q_cold, m_cold = load_eval_protocol(config.TRAIN_DATA, split)
+        m = evaluate(enc, users, q_warm, logq, ks, m_warm, eval_history_cap=cap)
+        print(f"[{split:4s} warm] {fmt(m, ks)}")
+        if split == "val":  # cold chỉ chấm val — test_cold là final exam
+            mc = evaluate(enc, users, q_cold, logq, ks, m_cold, eval_history_cap=cap, pooled=True)
+            print(f"[val  cold] {fmt(mc, ks)}")
+            print("            hitrate " + " ".join(f"@{k}={mc[f'hitrate@{k}']:.4f}" for k in ks)
+                  + f"  (n_pairs={mc['n_pairs']:,})")
 
-    # đối chiếu: best.pt ghi metric trên split nào (config.eval_split) lúc train
     ckpt_path = config.ROOT / "checkpoints" / "best.pt"
     if ckpt_path.exists():
         ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         ref = ck.get("metrics", {})
         if ref:
-            cols = " | ".join(f"recall@{k} {ref.get(f'recall@{k}', float('nan')):.4f}  "
-                              f"ndcg@{k} {ref.get(f'ndcg@{k}', float('nan')):.4f}" for k in ks)
-            print(f"\n[ref ] best.pt recorded (split='{ck['cfg'].eval_split}', "
-                  f"epoch={ck.get('epoch')}): {cols}")
-            print("       -> [val] qua artifacts phải ~khớp dòng ref này (xác nhận export trung thực).")
+            cols = " ".join(f"r@{k}={ref.get(f'recall@{k}', float('nan')):.4f}" for k in ks)
+            print(f"\n[ref ] best.pt recorded (val warm, epoch={ck.get('epoch')}): {cols}")
+            print("       -> [val warm] qua artifacts ~khớp dòng này (lệch nhẹ do row H = OOV);"
+                  " [val cold] ~khớp log run_cold_eval.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
-# Model (Two-Tower Retrieval) — v2
+# Model (Two-Tower Retrieval)
 
-Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval v2**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`). Bản v1 + lịch sử thí nghiệm v1-v4 (score_pool, attn): `legacy/docs/TWO_TOWER_MODEL.md`.
+Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`).
 
 ---
 
@@ -8,9 +8,7 @@ Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol e
 
 **Mục tiêu**: học 2 tower (user/item) sao cho `cosine(U, V⁺)` cao cho cặp positive; serve = brute-force top-K trên ~22.8k item. Headline tuning = **warm recall@200** (val); final exam = **cold slice** (test_cold — gợi ý anime mới chỉ bằng content, id→OOV).
 
-**Đổi so với v1**: protocol eval v2 (mask seen−query, +cold slice, ks tới 500), history sample từ FULL list (augmentation) thay top-30 tĩnh, `history_source: cache|embed`, `logq_alpha`, `max_examples_per_user`. Kiến trúc tower KHÔNG đổi.
-
-**Smoke v2** (50k ex, 1 epoch, MPS): loss 6.80; warm val r@200 0.011 (random-init) → 0.239 sau 97 step; cold-eval máy móc chạy (8.4k user / 150k pairs). Epoch full 67.5M @ bs8192 ≈ 8.2k step.
+**Smoke** (50k ex, 1 epoch, MPS): loss 6.80; warm val r@200 0.011 (random-init) → 0.239 sau 97 step; cold-eval máy móc chạy (8.4k user / 150k pairs). Epoch full 67.5M @ bs8192 ≈ 8.2k step.
 
 ## 2. Files — `retriever/src/` + `tests/`
 
@@ -21,33 +19,33 @@ src/
 │                 # + ExamplesDataset (resample per-user cap) + Collate (sample history)
 ├── model.py      # ItemTower / UserTower / TwoTower (+cold_oov cache, history_source)
 ├── loss.py       # info_nce_logq (+logq_alpha)
-├── metrics.py    # protocol v2: build_masks / load_eval_protocol / evaluate / run_cold_eval
+├── metrics.py    # protocol eval: build_masks / load_eval_protocol / evaluate / run_cold_eval
 └── train.py      # fit(cfg): loop + eval warm + checkpoint best theo recall@headline_k
 tests/            # pytest invariants — KHÔNG cần train-data (fixtures synthetic)
 ```
 
 Convention: import flat, CWD = `retriever/src/`. Tests: `venv/bin/python -m pytest retriever/tests -q`.
 
-## 3. Kiến trúc (không đổi so với v1)
+## 3. Kiến trúc
 
 2 tower → `d=128`, L2-norm → score = cosine. MLP mỗi tower: `Linear(in→256) → ReLU → Linear(256→128)`. Vocab/dim đọc từ `feature_spec.json`.
 
 - **ItemTower**: 6 cat/bucket emb (28) ⊕ genres Linear(22→8) ⊕ themes Linear(53→8) ⊕ studios Emb(302,16) masked-mean (16) [⊕ anime-id Emb(N,id_dim) nếu `use_item_id`] → MLP → V[128]. **id-dropout**: train, prob `id_dropout`, real idx≥2 → OOV (dạy backoff cold + giữ content path sống).
 - **UserTower**: pooled-history (128) ⊕ gender Emb(4,4) ⊕ joined Emb(5,4) → MLP → U[128]. `h_empty` learned thay pooling khi history rỗng. Không user-id (cold-by-user).
-- **Pooling history** (`history_pool`): `mean` (± `score_pool` linear/learned) | `attn` (learned-query attention). Kết quả v1: score_pool trung tính, attn không cải thiện — nguyên nhân gốc là vec history bị detach (xem dưới).
-- **`history_source`** (mới): `cache` = lookup `item_cache` **detach** (v1 — user side không có grad về biểu diễn history); `embed` = bảng `nn.Embedding(num_items, d, padding_idx=0)` **trainable** riêng cho phía history → gradient chảy qua đường history. Nếu chốt `embed`: export phải đóng gói thêm `hist_emb` + service đổi cách pool.
+- **Pooling history** (`history_pool`): `mean` (± `score_pool` linear/learned) | `attn` (learned-query attention). Kết quả đo: score_pool trung tính, attn không cải thiện khi vec history bị detach (xem `history_source`).
+- **`history_source`**: `cache` = lookup `item_cache` **detach** (user side không có grad về biểu diễn history); `embed` = bảng `nn.Embedding(num_items, d, padding_idx=0)` **trainable** riêng cho phía history → gradient chảy qua đường history. Nếu chốt `embed`: export phải đóng gói thêm `hist_emb` + service đổi cách pool.
 - **Item-vec cache**: refresh đầu epoch + mỗi `cache_refresh_steps`; eval dùng cache. **`refresh_item_cache(cold_mask=...)`**: row thuộc H encode id→OOV (content thật) — bắt buộc cho cold eval.
 
-## 4. Batch (collate v2)
+## 4. Batch (collate)
 
 Mỗi example `(user_idx, pos)`. Batch B:
-- **History**: sample `train_hist_len` (32) vị trí từ **full list** của user (with-replacement khi list > L — dup nhẹ chấp nhận để vectorize; ngắn hơn → lấy hết + pad); gỡ anchor bằng mask; `hist_dropout` (12%) bỏ trọn history → h_empty. *Khác v1*: mỗi step thấy tổ hợp history khác nhau (augmentation), item đuôi của heavy user được vào history.
+- **History**: sample `train_hist_len` (32) vị trí từ **full list** của user (with-replacement khi list > L — dup nhẹ chấp nhận để vectorize; ngắn hơn → lấy hết + pad); gỡ anchor bằng mask; `hist_dropout` (12%) bỏ trọn history → h_empty. Mỗi step thấy tổ hợp history khác nhau (augmentation), item đuôi của heavy user cũng được vào history.
 - **Hard-neg**: sample m phân biệt từ `hard_neg_ids` (−H) của chính user; thiếu → PAD + mask; 0 → loss thuần in-batch.
 - **`max_examples_per_user`** (None=off): mỗi epoch resample ≤C example/user (lexsort vectorized, tất định theo epoch) — align trọng số train (∝n_pos, mean ~270) với eval (đều per user), epoch ngắn ~4×.
 
 ## 5. Loss
 
-InfoNCE + logQ + τ (y v1) + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 tắt — knob cân popularity vì metric thưởng popularity còn logQ chống). Hard-neg không logQ, nhân β. Mask false-negative + mask pad → −inf.
+InfoNCE + logQ + τ + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 tắt — knob cân popularity vì metric thưởng popularity còn logQ chống). Hard-neg không logQ, nhân β. Mask false-negative + mask pad → −inf.
 
 ## 6. Config surface (`TwoTowerConfig` — đổi từ notebook, không hardcode)
 
@@ -58,9 +56,9 @@ InfoNCE + logQ + τ (y v1) + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 fu
 | Train | `lr`(1e-3), `cosine_lr`(F), `weight_decay`(0), `batch_size`(4096), `epochs`, `hist_dropout`(.12), `m_hardneg`(3), **`train_hist_len`(32)**, **`max_examples_per_user`(None)**, `cache_refresh_steps`(300) |
 | Eval | **`eval_ks`([10,50,100,200,500])**, **`headline_k`(200)**, **`eval_history_cap`(1024)**, `eval_split`(val), `eval_every_steps`(0) |
 
-## 7. Protocol eval v2 (`metrics.py`) — phần quan trọng nhất
+## 7. Protocol eval (`metrics.py`) — phần quan trọng nhất
 
-1. **Seen-mask**: mask = `seen(user) − query_đang_chấm` (`build_masks`; seen từ `eval_seen.parquet`, MỌI status kể cả PTW — khớp serving filter cả list). Query ⊆ seen nên tuyệt đối không mask thẳng seen. *v1 chỉ mask 30-item history → số bị đè thấp hệ thống (Popular test r@100 0.262 → 0.332 khi sửa).*
+1. **Seen-mask**: mask = `seen(user) − query_đang_chấm` (`build_masks`; seen từ `eval_seen.parquet`, MỌI status kể cả PTW — khớp serving filter cả list). Query ⊆ seen nên tuyệt đối không mask thẳng seen.
 2. **2 slice**:
    - **Warm** (`examples val/test`): tuning + chọn checkpoint (`recall@headline_k` trên val). Cache warm (id thật).
    - **Cold** (`examples {val,test}_cold`): `run_cold_eval` — refresh cache `cold_mask` (H → id OOV, content thật) rồi rank **full-catalog**; thêm chế độ `h_only` (candidate chỉ H — diagnostic content thuần, tách khỏi cạnh tranh warm-vs-cold). **test_cold = final exam, chấm 1 lần lúc cuối**; val_cold để debug. KHÔNG nằm trong train loop.
@@ -86,5 +84,5 @@ InfoNCE + logQ + τ (y v1) + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 fu
 ```bash
 venv/bin/python -m pytest retriever/tests -q          # invariants
 cd retriever/src && ../../venv/bin/python train.py --smoke   # end-to-end nhanh
-# train thật: train.ipynb (VERSION v5) trên Colab — upload train-data v2 lên Drive trước
+# train thật: train.ipynb trên Colab — train-data trên Drive phải khớp bản local
 ```

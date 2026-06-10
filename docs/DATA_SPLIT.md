@@ -1,0 +1,115 @@
+# DATA_SPLIT.md — Split & định nghĩa support/query
+
+> Mô tả cách chia data + protocol eval của retriever. Pipeline build chi tiết: `docs/TRAIN_DATA.md`. Model + metrics: `docs/TWO_TOWER_MODEL.md`. Số liệu thực tế: root `PROGRESS.md`.
+
+## 1. Bức tranh tổng — 2 trục overlay
+
+Split có **2 trục độc lập chồng lên nhau** (overlay — không tách thêm nhóm user riêng cho cold-item):
+
+```
+                                  TRỤC ITEM
+                     warm (~95% anime)        cold H (5% anime mới nhất)
+           ┌──────────────────────────────┬─────────────────────────────┐
+TRỤC USER  │                              │                             │
+train 90%  │ train examples + history     │ VỨT HẲN (không example,     │
+           │ + hard_neg                   │ không history, không neg)   │
+           ├──────────────────────────────┼─────────────────────────────┤
+val   5%   │ 80% → support (history)      │ 100% → query                │
+           │ 20% → query  = examples/val  │ = examples/val_cold         │
+           ├──────────────────────────────┼─────────────────────────────┤
+test  5%   │ 80% → support (history)      │ 100% → query                │
+           │ 20% → query  = examples/test │ = examples/test_cold        │
+           └──────────────────────────────┴─────────────────────────────┘
+```
+
+- **Trục user (cold-user)**: hold trọn user. Trả lời "user CHƯA TỪNG thấy lúc train, encode từ history + features thì gợi ý tốt không?"
+- **Trục item (cold-item H)**: cách ly trọn item khỏi mọi đường training. Trả lời "anime MỚI ra mắt, model chưa từng thấy id, gợi ý bằng content được không?"
+- Cùng một tập eval user phục vụ cả 2 trục (cold pairs rất thưa, tách user riêng cho cold sẽ không đủ mẫu).
+
+## 2. Trục user — cold-user 90/5/5
+
+- `hash(username, seed=42) → train 90% / val 5% / test 5%` (stable hash, `03_split.py`). User nguyên vẹn nằm trong đúng 1 split — không có interaction nào của eval user lọt vào train.
+- Điều kiện vào val/test: `n_pos ≥ EVAL_MIN_POS = 11` (user quá ít positive thì không đủ để vừa có support vừa có query). User dưới ngưỡng → train.
+- Số hiện tại: 291.001 user = train 262.676 / val 14.058 / test 14.267.
+
+## 3. Trục item — cold H
+
+- **H = `ceil(5% · N)` anime mới nhất theo `start_date`** (parse full date, sort desc, tie-break ổn định theo mal_id). Hiện tại: 1.142 anime, cutoff **2024-09-30**. List: `train-data/cold_items.parquet`.
+- **Item null `start_date` (291 anime): chỉ bị loại khỏi VÒNG TUYỂN H** — không thể khẳng định nó "mới nhất" khi không biết ngày. Chúng KHÔNG bị vứt khỏi data: vẫn là item warm bình thường (được train, được nằm trong history, được làm candidate, được làm warm query).
+- Không có "bucket time" nào khác — split không phải temporal split toàn cục. Chỉ có 2 nhãn item: `∈ H` (cold) và `∉ H` (warm, bất kể ngày, kể cả null-date).
+- **H bị cách ly ở 4 chỗ** (99_verify assert cả 4): ① train examples, ② history của MỌI user, ③ hard_neg pools, ④ support của eval user. Positive-H của train user vứt hẳn; positive-H của eval user → toàn bộ thành cold query.
+
+## 4. Định nghĩa thuật ngữ
+
+| Thuật ngữ | Định nghĩa | Nguồn file |
+|---|---|---|
+| **positive** | `status ∈ {completed, watching}` & `score ∉ [1,4]` | `prep_config.is_pos_expr()` |
+| **hard-neg** | `dropped` ∪ `score ∈ [1,4]` (mọi status) | `prep_config.is_hardneg_expr()` |
+| **seen** | MỌI interaction MỌI status của eval user (kể cả PTW, on_hold, score thấp) | `eval_seen.parquet` |
+| **support** | Phần positive-warm của eval user mà model ĐƯỢC NHÌN làm input — chính là history khi encode user tower | `users.parquet: history_ids` |
+| **query** | Phần positive bị GIẤU đi làm đáp án — model phải rank chúng cao trong catalog mà không được nhìn | `examples/split={val,test}[,_cold]` |
+| **history** | = support (với eval user). Với train user: toàn bộ positive-warm (anchor được gỡ tại runtime khỏi history của chính batch đó) | `users.parquet` |
+
+Quan hệ tập hợp (per eval user): `query ⊔ support = positive-warm` (chia 20/80 bằng tie-hash reproducible, seed 42); `cold query = positive ∩ H`; `seen ⊇ support ∪ query ∪ mọi thứ khác user từng chạm`.
+
+## 5. Mỗi loại user — data dùng thế nào
+
+**Train user (262.676):**
+- examples = toàn bộ positive-warm (67.46M pairs) — mỗi pair là 1 anchor InfoNCE.
+- history = cũng chính list đó (full, sort score desc); lúc train sample `train_hist_len=32`/anchor, và anchor đang chấm bị gỡ khỏi history để khỏi tự nhìn đáp án.
+- hard_neg ≤ 64/user, đã trừ H.
+
+**Eval user (val/test):**
+- Encode user tower bằng: support history (prefix `eval_history_cap=1024` của list full sort score desc) + gender + joined.
+- Chấm trên 2 slice:
+  - **Warm slice** (`examples/val|test`): query là item warm — đo chất lượng retrieval điều kiện bình thường. Dùng để **tuning** (headline `recall@200`).
+  - **Cold slice** (`examples/val_cold|test_cold`): query là item H — item cache phải refresh với **id→OOV cho mọi row H** (mô phỏng anime ngoài vocab lúc serve; encode bằng id thật chưa train = đo noise). Đo khả năng gợi ý content-only.
+
+## 6. Năm tập examples — dùng khi nào
+
+| Tập | Pairs | Users | Vai trò |
+|---|---|---|---|
+| `train` | 67.456.284 | 262.676 | anchor InfoNCE |
+| `val` | 751.026 | 14.029¹ | **vòng train Colab eval tập này** — chọn epoch/early-stop, headline `val recall@200` |
+| `test` | 748.751 | 14.250¹ | **bảng leaderboard sort theo `test_recall@200`** — so sánh run/baseline warm |
+| `val_cold` | 150.335 | 8.388 | debug/tuning cold (chạy tay, cell 10 notebook) |
+| `test_cold` | 145.691 | 8.510 | **FINAL EXAM — chấm đúng 1 lần khi chốt model** |
+
+¹ users có ≥1 warm query (user `n_warm < 2` không có warm query nhưng vẫn có thể có cold query).
+
+Kỷ luật: không tune trên `test`/`test_cold`. Vòng lặp quyết định chạy trên `val` (warm) + `val_cold` (cold); 2 tập test chỉ để báo cáo.
+
+## 7. Seen-mask
+
+Khi chấm, model rank **toàn catalog**. Mọi item user đã chạm (seen) — trừ chính query đang chấm — bị set `−inf`:
+
+```
+mask(user) = seen(user) − query_đang_chấm
+```
+
+- **Vì sao mask seen**: support history là thứ model vừa được nhìn làm input và (với MF/KNN) được fit trực tiếp — chúng tất yếu chiếm top-K. Lúc serve, service cũng filter toàn bộ list MAL của user trước khi trả kết quả. Không mask (hoặc chỉ mask một phần history) → top-K bị chiếm chỗ bởi item "đã xem" không bao giờ được recommend thật → recall bị đè thấp giả tạo và lệch khỏi serving.
+- **Vì sao trừ query ra**: query ⊆ seen by construction — mask cả query thì đáp án biến mất, recall = 0.
+- Warm và cold dùng 2 mask khác nhau (khác tập query bị trừ ra).
+
+## 8. Trần lý thuyết recall@K (đọc số cho đúng)
+
+Metric là mean-per-user của `hits@K / R` với R = TOÀN BỘ query của user. Khi `R > K` thì user đó tối đa đạt `K/R < 1` → trần trung bình < 1:
+
+| Slice | q/user p50 | trần r@10 | trần r@50 | trần r@100 | trần r@200 | trần r@500 |
+|---|---|---|---|---|---|---|
+| warm val | 36 | .402 | .851 | .958 | .993 | 1.000 |
+| warm test | 35 | .408 | .852 | .959 | .993 | 1.000 |
+| cold val | 9 | .744 | .975 | .996 | 1.000 | 1.000 |
+| cold test | 9 | .756 | .976 | .997 | 1.000 | 1.000 |
+
+- **Headline `recall@200` trần ≈ 0.993 — coi như không kẹt trần.** `recall@10` warm trần 0.41: MF đạt .195 nghĩa là ~48% của mức khả thi, không phải 19.5% của 1.0.
+- Trần áp dụng NHƯ NHAU cho mọi model/baseline (cùng tập query) → so sánh tương đối vẫn công bằng; chỉ số tuyệt đối ở K nhỏ trông thấp một phần vì trần.
+- `ndcg@K` KHÔNG dính trần kiểu này: IDCG chuẩn hóa theo `min(R, K)` nên user nhiều query vẫn đạt được 1.0 lý thuyết.
+
+## 9. Invariants được verify (99_verify + pytest)
+
+- leak eval-example ∩ history = 0 (cả warm lẫn cold).
+- H-isolation 4 chỗ = 0 vi phạm; cold examples ⊆ H đúng split.
+- seen ⊇ history ∪ query của mọi eval user.
+- History sort score desc (tie hash asc) → prefix cap = top-by-score.
+- logQ: H có count train = 0 → floor `max(count,1)` giữ H finite (vẫn là candidate khi rank full catalog).
