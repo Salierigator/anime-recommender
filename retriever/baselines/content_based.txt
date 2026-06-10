@@ -1,11 +1,36 @@
-# Content-based baseline (mean + IDF) — split=test
-# generated 2026-06-05T12:00:41  device=mps
-# users evaluated: 13,790   candidates (finite logq): 22,821   content_dim: 423
+# Content-based baseline (mean + IDF) — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-10T21:43:31  device=mps  content_dim=423
+# candidates (finite logq): 22,821
 
-recall@10   = 0.038358
-recall@50   = 0.099804
-recall@100  = 0.147807
+## warm (test)  (users: 14,250)
+recall@10   = 0.036801
+recall@50   = 0.103525
+recall@100  = 0.157663
+recall@200  = 0.234359
+recall@500  = 0.377868
 
-ndcg@10     = 0.100409
-ndcg@50     = 0.099985
-ndcg@100    = 0.116407
+ndcg@10     = 0.094493
+ndcg@50     = 0.103820
+ndcg@100    = 0.122072
+ndcg@200    = 0.153691
+ndcg@500    = 0.211798
+
+## cold (test_cold, full-catalog)  (users: 8,510, pairs: 145,691)
+recall@10   = 0.026717
+recall@50   = 0.081967
+recall@100  = 0.132032
+recall@200  = 0.217714
+recall@500  = 0.391795
+
+ndcg@10     = 0.041065
+ndcg@50     = 0.056015
+ndcg@100    = 0.072546
+ndcg@200    = 0.098748
+ndcg@500    = 0.145233
+
+hitrate@10  = 0.019418
+hitrate@50  = 0.075440
+hitrate@100 = 0.127297
+hitrate@200 = 0.210569
+hitrate@500 = 0.378404
+

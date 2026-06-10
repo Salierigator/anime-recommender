@@ -1,14 +1,22 @@
-"""Eval cold-by-user (headline metric): recall@K, ndcg@K (xem plan.md §2, TRAIN_DATA §5.3).
+"""Eval cold-by-user — protocol v2 (xem docs/TWO_TOWER_MODEL.md).
 
-User eval: build U từ history (support, đã chống leak ở pipeline) -> score vs toàn item_cache
--> mask non-candidate + mask item đã có trong history -> rank -> so với query items (examples).
+v2 so với v1:
+  - Seen-mask ĐẦY ĐỦ: mask = seen(user) − query_đang_chấm (seen = MỌI status, từ
+    eval_seen.parquet; v1 chỉ mask 30-item history -> số bị đè thấp).
+  - 2 slice: warm (examples val/test — tuning, headline recall@200) và cold
+    (examples {val,test}_cold — item H, final exam). Cold eval PHẢI refresh
+    item_cache với cold_mask (encode H bằng OOV) trước khi gọi.
+  - Cold thêm pooled hit-rate@K (slice mỏng, per-user noisy) + chế độ candidate-chỉ-H.
 """
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Dict, List
 
 import numpy as np
 import torch
+
+import data as data_mod
 
 
 def group_examples(user_idx: np.ndarray, anime_idx: np.ndarray) -> Dict[int, List[int]]:
@@ -19,40 +27,85 @@ def group_examples(user_idx: np.ndarray, anime_idx: np.ndarray) -> Dict[int, Lis
     return out
 
 
+def build_masks(seen: Dict[int, np.ndarray], queries: Dict[int, List[int]]) -> Dict[int, np.ndarray]:
+    """mask_ids[u] = seen[u] − queries[u]: các item phải gạt khỏi ranking khi chấm queries này.
+    (Query ⊆ seen by construction — chính vì vậy KHÔNG được mask thẳng seen.)"""
+    out: Dict[int, np.ndarray] = {}
+    for u, q in queries.items():
+        s = seen.get(u)
+        if s is None:
+            out[u] = np.empty(0, dtype=np.int64)
+        else:
+            out[u] = np.setdiff1d(s, np.asarray(q, dtype=s.dtype))
+    return out
+
+
+def load_eval_protocol(train_data: Path, split: str):
+    """Load 1 lần cho 1 split ('val'|'test'): trả
+    (queries_warm, mask_warm, queries_cold, mask_cold). Dùng chung model + baselines."""
+    seen = data_mod.load_eval_seen(train_data)
+    ds_w = data_mod.ExamplesDataset(train_data, split)
+    q_warm = group_examples(ds_w.user_idx, ds_w.anime_idx)
+    ds_c = data_mod.ExamplesDataset(train_data, f"{split}_cold")
+    q_cold = group_examples(ds_c.user_idx, ds_c.anime_idx)
+    return q_warm, build_masks(seen, q_warm), q_cold, build_masks(seen, q_cold)
+
+
+def _pad_mask_ids(mask_ids: Dict[int, np.ndarray], chunk: List[int]) -> np.ndarray:
+    """Ghép mask ids của 1 chunk user thành ma trận pad 0 (PAD=0 vốn non-candidate)."""
+    mlen = max(max((len(mask_ids[u]) for u in chunk), default=0), 1)
+    out = np.zeros((len(chunk), mlen), dtype=np.int64)
+    for r, u in enumerate(chunk):
+        m = mask_ids[u]
+        out[r, : len(m)] = m
+    return out
+
+
 @torch.no_grad()
-def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, batch=512):
-    """model.item_cache phải được refresh trước khi gọi. Trả dict {recall@K, ndcg@K}."""
+def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, mask_ids: Dict[int, np.ndarray],
+             eval_history_cap: int = 1024, batch: int = 512,
+             candidate_mask: torch.Tensor = None, pooled: bool = False):
+    """Protocol v2. model.item_cache phải refresh đúng chế độ TRƯỚC khi gọi
+    (warm: refresh_item_cache(); cold: refresh_item_cache(cold_mask=...)).
+
+    candidate_mask: override tập được rank (None = isfinite(logq) = mọi real item;
+    truyền cold_mask bool[N] để chạy chế độ chỉ-H). pooled=True: thêm hitrate@K
+    pooled trên toàn bộ (user, query) pairs + n_pairs (dùng cho cold slice mỏng).
+    Trả dict {recall@K, ndcg@K, n_users[, hitrate@K, n_pairs]}.
+    """
     model.eval()
     device = model.item_cache.device
     kmax = max(ks)
-    candidate_mask = torch.isfinite(logq).to(device)             # [N] True = item được rank
+    cand = torch.isfinite(logq).to(device) if candidate_mask is None else candidate_mask.to(device)
 
     uids = list(queries.keys())
     sums = {f"recall@{k}": 0.0 for k in ks}
     sums.update({f"ndcg@{k}": 0.0 for k in ks})
+    pooled_hits = {k: 0.0 for k in ks}
+    total_rel = 0
     n = 0
 
     # IDCG[k] precompute (relevant đứng đầu): sum_{i=1..k} 1/log2(i+1)
     discount = 1.0 / np.log2(np.arange(2, kmax + 2))
-    idcg_cum = np.cumsum(discount)                               # idcg_cum[r-1] = IDCG cho r relevant trong topK
+    idcg_cum = np.cumsum(discount)
 
     for s in range(0, len(uids), batch):
         chunk = uids[s : s + batch]
         u = np.asarray(chunk, dtype=np.int64)
-        hist = torch.from_numpy(users.history_pad[u]).long().to(device)
-        hmask = hist != 0
+        ids, hmask, hsc = users.eval_history_batch(u, eval_history_cap)
         ub = {
-            "history_ids": hist,
-            "history_mask": hmask,
-            "history_scores": torch.from_numpy(users.history_scores_pad[u]).long().to(device),
+            "history_ids": torch.from_numpy(ids).to(device),
+            "history_mask": torch.from_numpy(hmask).to(device),
+            "history_scores": torch.from_numpy(hsc).to(device),
             "gender_id": torch.from_numpy(users.gender_id[u]).to(device),
             "joined_bucket": torch.from_numpy(users.joined_bucket[u]).to(device),
         }
         U = model.encode_users(ub)                              # [E, d]
-        scores = U @ model.item_cache.t()                      # [E, N]
-        scores[:, ~candidate_mask] = float("-inf")
-        # mask item đã seen trong history (đừng recommend lại)
-        scores.scatter_(1, hist, float("-inf"))                # hist pad=0 cũng bị -inf (non-candidate sẵn rồi)
+        scores = U @ model.item_cache.t()                       # [E, N]
+        scores[:, ~cand] = float("-inf")
+        # mask seen − query (KHÔNG mask query — chúng là đáp án đang chấm)
+        mpad = torch.from_numpy(_pad_mask_ids(mask_ids, chunk)).to(device)
+        scores.scatter_(1, mpad, float("-inf"))                 # pad 0 = PAD, vốn non-candidate
         topk = torch.topk(scores, kmax, dim=1).indices.cpu().numpy()  # [E, kmax]
 
         for row, uid in enumerate(chunk):
@@ -69,7 +122,31 @@ def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, batch=512):
                 dcg = (h * discount[:k]).sum()
                 idcg = idcg_cum[min(R, k) - 1]
                 sums[f"ndcg@{k}"] += dcg / idcg
+                if pooled:
+                    pooled_hits[k] += n_hit
+            total_rel += R
             n += 1
 
     model.train()
-    return {m: (v / n if n else 0.0) for m, v in sums.items()} | {"n_users": n}
+    out = {m: (v / n if n else 0.0) for m, v in sums.items()}
+    out["n_users"] = n
+    if pooled:
+        for k in ks:
+            out[f"hitrate@{k}"] = pooled_hits[k] / total_rel if total_rel else 0.0
+        out["n_pairs"] = total_rel
+    return out
+
+
+def run_cold_eval(model, users, train_data: Path, logq, ks, split: str = "test",
+                  eval_history_cap: int = 1024, h_only: bool = False):
+    """Helper cold slice (final exam trên test; val để debug): refresh cache cold_oov
+    -> evaluate cold queries (pooled). h_only=True: candidate chỉ tập H (diagnostic content).
+    NHỚ: sau khi gọi, item_cache đang ở chế độ cold — refresh_item_cache() lại nếu còn
+    dùng warm."""
+    spec = data_mod.load_feature_spec(train_data)
+    cold_mask = data_mod.load_cold_mask(train_data, spec["num_items"])
+    _, _, q_cold, m_cold = load_eval_protocol(train_data, split)
+    model.refresh_item_cache(cold_mask=cold_mask)
+    cand = cold_mask if h_only else None
+    return evaluate(model, users, q_cold, logq, ks, m_cold,
+                    eval_history_cap=eval_history_cap, candidate_mask=cand, pooled=True)

@@ -150,6 +150,12 @@ class TwoTower(nn.Module):
         if cfg.history_pool == "attn":
             self.attn_key = nn.Linear(self.d, self.d, bias=False)
             self.attn_query = nn.Parameter(torch.randn(self.d))   # unit-scale: /√d -> logits ~unit-var (không uniform-init)
+        # nguồn vec phía history: 'cache' (item-vec detach, không grad — như v1) |
+        # 'embed' (bảng Embedding trainable riêng -> gradient chảy qua đường history;
+        # nếu chốt dùng thì export.py sau này phải đóng gói thêm hist_emb cho service).
+        self.history_source = cfg.history_source
+        if cfg.history_source == "embed":
+            self.hist_emb = nn.Embedding(item_table.num_items, cfg.d, padding_idx=0)
         self.item_table = item_table                            # tensors trên cùng device
         self.register_buffer("item_cache", torch.zeros(item_table.num_items, cfg.d), persistent=False)
 
@@ -172,13 +178,20 @@ class TwoTower(nn.Module):
         return vec.reshape(*shape, self.d)
 
     @torch.no_grad()
-    def refresh_item_cache(self, chunk: int = 8192):
+    def refresh_item_cache(self, chunk: int = 8192, cold_mask: torch.Tensor = None):
+        """cold_mask [num_items] bool: True = item cold -> nhánh id encode bằng OOV
+        (mô phỏng anime ngoài vocab lúc serve; content vẫn real). None = warm (id thật)."""
         self.eval()
         N = self.item_table.num_items
+        if cold_mask is not None:
+            cold_mask = cold_mask.to(self.item_cache.device)
         for s in range(0, N, chunk):
             e = min(s + chunk, N)
             idx = torch.arange(s, e, device=self.item_cache.device)
-            self.item_cache[s:e] = self.item_tower(self._gather(idx), idx)  # real id (warm)
+            id_idx = idx
+            if cold_mask is not None:
+                id_idx = torch.where(cold_mask[s:e], torch.full_like(idx, self.oov_idx), idx)
+            self.item_cache[s:e] = self.item_tower(self._gather(idx), id_idx)
         self.train()
 
     # --- user side ---
@@ -192,9 +205,13 @@ class TwoTower(nn.Module):
         return (attn.unsqueeze(-1) * vecs).sum(dim=-2)                     # [B, d]
 
     def pool_history(self, history_ids, history_mask, history_scores=None) -> torch.Tensor:
-        """Pool cached item-vec theo history (detach, no grad qua history path). Row mask rỗng -> h_empty.
+        """Pool vec theo history. Nguồn vec = history_source: 'cache' (item-vec detach, no grad)
+        | 'embed' (bảng trainable, CÓ grad). Row mask rỗng -> h_empty.
         history_pool: mean (theo score_pool none/linear/learned) | attn (learned-query attention, bỏ qua score)."""
-        vecs = self.item_cache[history_ids].detach()           # [B, L, d]
+        if self.history_source == "embed":
+            vecs = self.hist_emb(history_ids)                  # [B, L, d] (grad)
+        else:
+            vecs = self.item_cache[history_ids].detach()       # [B, L, d]
         if self.history_pool == "attn":
             pooled = self._attn_pool(vecs, history_mask)       # [B, d]
         elif self.score_pool == "none" or history_scores is None:

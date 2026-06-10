@@ -31,7 +31,7 @@ def build(cfg: cfg_mod.TwoTowerConfig):
     spec = data_mod.load_feature_spec(cfg.train_data)
     logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
     item_table = data_mod.ItemTable(cfg.train_data).to(cfg.device)
-    users = data_mod.UserTable(cfg.train_data, spec["k_history"], spec["hard_neg_cap"])
+    users = data_mod.UserTable(cfg.train_data, spec["hard_neg_cap"])
     model = TwoTower(spec, cfg, item_table).to(cfg.device)
     return spec, logq, item_table, users, model
 
@@ -40,8 +40,9 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     set_seed(cfg.seed)
     spec, logq, item_table, users, model = build(cfg)
 
-    train_ds = data_mod.ExamplesDataset(cfg.train_data, "train", subset=cfg.subset)
-    collate = data_mod.Collate(users, cfg.hist_dropout, cfg.m_hardneg)
+    train_ds = data_mod.ExamplesDataset(cfg.train_data, "train", subset=cfg.subset,
+                                        max_per_user=cfg.max_examples_per_user, seed=cfg.seed)
+    collate = data_mod.Collate(users, cfg.hist_dropout, cfg.m_hardneg, cfg.train_hist_len)
     loader = DataLoader(
         train_ds, batch_size=cfg.batch_size, shuffle=True,
         collate_fn=collate, num_workers=cfg.num_workers, drop_last=True,
@@ -50,22 +51,26 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     print(f"[fit] device={cfg.device} · train {len(train_ds):,} ex · "
           f"{len(loader):,} steps/epoch · {cfg.epochs} epochs")
 
+    # eval warm protocol v2: queries + mask (seen − query). Cold slice KHÔNG đo trong
+    # loop (final-exam discipline) — dùng metrics.run_cold_eval từ notebook/script.
     eval_ds = data_mod.ExamplesDataset(cfg.train_data, cfg.eval_split)
     queries = metrics_mod.group_examples(eval_ds.user_idx, eval_ds.anime_idx)
+    mask_ids = metrics_mod.build_masks(data_mod.load_eval_seen(cfg.train_data), queries)
 
     opt = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * cfg.epochs)
              if cfg.cosine_lr else None)
 
     cfg.ckpt_dir.mkdir(parents=True, exist_ok=True)
-    headline = f"recall@{cfg.eval_ks[-1]}"
+    headline = f"recall@{cfg.headline_k}"
     history = {"loss_steps": [], "loss_vals": [], "eval_steps": [], "eval_metrics": []}
     # loss_sum/loss_cnt: gom loss (đã log mỗi log_every) để in TB mỗi lần eval rồi reset
     state = {"best": -1.0, "loss_sum": 0.0, "loss_cnt": 0, "saved_once": False}
 
     def do_eval(step, epoch):
-        model.refresh_item_cache()                         # cache mới nhất trước eval
-        m = metrics_mod.evaluate(model, users, queries, logq, cfg.eval_ks)
+        model.refresh_item_cache()                         # cache mới nhất (warm) trước eval
+        m = metrics_mod.evaluate(model, users, queries, logq, cfg.eval_ks, mask_ids,
+                                 eval_history_cap=cfg.eval_history_cap)
         history["eval_steps"].append(step)
         history["eval_metrics"].append(m)
         if state["loss_cnt"]:
@@ -90,7 +95,9 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     step = 0
     do_eval(0, 0)                                          # baseline random-init (neo đường cong)
     for epoch in range(cfg.epochs):
-        print(f"── epoch {epoch} " + "─" * 38)
+        if cfg.max_examples_per_user is not None and epoch > 0:
+            train_ds.resample(epoch)                       # rút lại mẫu per-user mỗi epoch
+        print(f"── epoch {epoch} ({len(train_ds):,} ex) " + "─" * 24)
         model.refresh_item_cache()                         # cache đầu epoch
         t0 = time.time()
         for batch in loader:
@@ -100,7 +107,7 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
             U, V_pos, V_hn = model(batch)
             loss = info_nce_logq(
                 U, V_pos, V_hn, batch["hardneg_mask"], batch["pos"],
-                logq, cfg.tau, cfg.beta,
+                logq, cfg.tau, cfg.beta, cfg.logq_alpha,
             )
             opt.zero_grad()
             loss.backward()

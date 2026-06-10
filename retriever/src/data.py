@@ -1,7 +1,9 @@
-"""Load artifacts train-data/ + Dataset + collate (xem docs/TRAIN_DATA.md §6).
+"""Load artifacts train-data/ v2 + Dataset + collate (xem docs/TRAIN_DATA.md).
 
-Tất cả artifact nhỏ -> load 1 lần vào RAM. Collate build batch tensor vectorized:
-history (gỡ anchor + dropout), hard-neg per-user (sample m + mask), gender/joined.
+v2: history lưu FULL trong users.parquet -> giữ RAGGED trong RAM (values + offsets,
+KHÔNG pad ma trận full). Train: sample train_hist_len item/anchor mỗi step
+(augmentation); eval: prefix eval_history_cap (list đã sort score desc = top-by-score).
+Thêm eval_seen (seen-mask protocol v2) + cold_mask (encode H bằng OOV lúc cold eval).
 """
 from __future__ import annotations
 
@@ -21,9 +23,27 @@ def load_feature_spec(train_data: Path) -> dict:
 
 
 def load_logq(train_data: Path) -> torch.Tensor:
-    """logq.npy dense theo anime_idx (PAD/OOV/non-candidate = -inf)."""
+    """logq.npy dense theo anime_idx (PAD/OOV = -inf; real — gồm cold H — finite)."""
     arr = np.load(train_data / "logq.npy")
     return torch.from_numpy(arr.astype(np.float32))
+
+
+def load_cold_mask(train_data: Path, num_items: int) -> torch.Tensor:
+    """Bool [num_items], True = item thuộc tập cold H (cold_items.parquet)."""
+    idx = pq.read_table(train_data / "cold_items.parquet").column("anime_idx").to_numpy()
+    mask = np.zeros(num_items, dtype=bool)
+    mask[idx] = True
+    return torch.from_numpy(mask)
+
+
+def load_eval_seen(train_data: Path) -> Dict[int, np.ndarray]:
+    """eval_seen.parquet -> {user_idx: sorted np.int64 array seen_ids (MỌI status)}."""
+    t = pq.read_table(train_data / "eval_seen.parquet")
+    uids = t.column("user_idx").to_numpy()
+    col = t.column("seen_ids").combine_chunks()
+    vals = col.values.to_numpy(zero_copy_only=False).astype(np.int64)
+    offs = col.offsets.to_numpy().astype(np.int64)
+    return {int(u): vals[offs[i]:offs[i + 1]] for i, u in enumerate(uids)}
 
 
 def _pad_lists(col: List, width: int, dtype=np.int32) -> np.ndarray:
@@ -69,57 +89,115 @@ class ItemTable:
 
 
 class UserTable:
-    """Feature + history + hard_neg theo user_idx. Padded array để collate gather nhanh."""
+    """Feature + history (ragged FULL) + hard_neg theo user_idx.
 
-    def __init__(self, train_data: Path, k_history: int, hard_neg_cap: int):
+    History: hist_vals/hist_scores (flat) + hist_offs [U+1] — slice user u =
+    vals[offs[u]:offs[u+1]], đã sort (score desc, tie asc) từ prep -> prefix = top-by-score.
+    """
+
+    def __init__(self, train_data: Path, hard_neg_cap: int):
         t = pq.read_table(train_data / "users.parquet")
-        d = t.to_pydict()
-        self.num_users = len(d["user_idx"])
-        assert d["user_idx"] == list(range(self.num_users)), "users phải dense 0..U"
+        self.num_users = t.num_rows
+        uidx = t.column("user_idx").to_numpy()
+        assert (uidx == np.arange(self.num_users)).all(), "users phải dense 0..U"
 
-        self.split = np.asarray(d["split"], dtype=object)
-        self.gender_id = np.asarray(d["gender_id"], dtype=np.int64)
-        self.joined_bucket = np.asarray(d["joined_bucket"], dtype=np.int64)
+        self.split = np.asarray(t.column("split").to_pylist(), dtype=object)
+        self.gender_id = t.column("gender_id").to_numpy().astype(np.int64)
+        self.joined_bucket = t.column("joined_bucket").to_numpy().astype(np.int64)
 
-        self.history_pad = _pad_lists(d["history_ids"], k_history)            # [U,30] pad 0
-        self.history_scores_pad = _pad_lists(d["history_scores"], k_history)  # [U,30] pad 0 (align history_pad)
-        self.hardneg_pad = _pad_lists(d["hard_neg_ids"], hard_neg_cap)        # [U,64] pad 0
+        hcol = t.column("history_ids").combine_chunks()
+        self.hist_vals = hcol.values.to_numpy(zero_copy_only=False).astype(np.int32)
+        self.hist_offs = hcol.offsets.to_numpy().astype(np.int64)
+        scol = t.column("history_scores").combine_chunks()
+        self.hist_scores = scol.values.to_numpy(zero_copy_only=False).astype(np.int8)
+        assert len(self.hist_vals) == len(self.hist_scores)
+        assert len(self.hist_offs) == self.num_users + 1
+        if len(self.hist_vals) == 0:                       # degenerate guard: index 0 luôn hợp lệ
+            self.hist_vals = np.zeros(1, np.int32)
+            self.hist_scores = np.zeros(1, np.int8)
+
+        hn = t.column("hard_neg_ids").to_pylist()
+        self.hardneg_pad = _pad_lists(hn, hard_neg_cap)        # [U,cap] pad 0
         self.hardneg_len = np.asarray(
-            [min(len(x) if x is not None else 0, hard_neg_cap) for x in d["hard_neg_ids"]],
-            dtype=np.int64,
+            [min(len(x) if x is not None else 0, hard_neg_cap) for x in hn], dtype=np.int64,
         )
+
+    def history_lens(self) -> np.ndarray:
+        return self.hist_offs[1:] - self.hist_offs[:-1]
+
+    def eval_history_batch(self, u: np.ndarray, cap: int):
+        """Prefix (top-by-score) history cho eval. Trả (ids[E,W] i64, mask[E,W] bool,
+        scores[E,W] i64); W = min(max len batch, cap), >=1. Pad id/score = 0 + mask False."""
+        lens = np.minimum(self.hist_offs[u + 1] - self.hist_offs[u], cap)
+        W = max(int(lens.max()) if len(lens) else 1, 1)
+        ar = np.arange(W)[None, :]
+        posn = np.minimum(ar, np.maximum(lens - 1, 0)[:, None])
+        idx = self.hist_offs[u][:, None] + posn
+        idx[lens == 0] = 0                                   # row rỗng: index sentinel hợp lệ
+        ids = self.hist_vals[idx].astype(np.int64)
+        scores = self.hist_scores[idx].astype(np.int64)
+        mask = ar < lens[:, None]
+        ids[~mask] = 0
+        scores[~mask] = 0
+        return ids, mask, scores
 
 
 class ExamplesDataset(Dataset):
-    """(user_idx, anime_idx) positive cho 1 split. subset: chỉ lấy N đầu (smoke)."""
+    """(user_idx, anime_idx) positive cho 1 split (warm: train/val/test; cold: {val,test}_cold).
 
-    def __init__(self, train_data: Path, split: str, subset: int = None):
+    subset: chỉ lấy N đầu (smoke). max_per_user: cap example/user/epoch — gọi
+    resample(epoch) đầu mỗi epoch để rút lại mẫu (per-user, không hoàn lại).
+    """
+
+    def __init__(self, train_data: Path, split: str, subset: int = None,
+                 max_per_user: int = None, seed: int = 42):
         t = pq.read_table(train_data / "examples" / f"split={split}" / "part-0.parquet")
         self.user_idx = t.column("user_idx").to_numpy()
         self.anime_idx = t.column("anime_idx").to_numpy()
         if subset is not None:
             self.user_idx = self.user_idx[:subset]
             self.anime_idx = self.anime_idx[:subset]
+        self.max_per_user = max_per_user
+        self.seed = seed
+        self.active = np.arange(len(self.user_idx))
+        if max_per_user is not None:
+            self.resample(0)
+
+    def resample(self, epoch: int):
+        """Rút lại <= max_per_user example mỗi user (vectorized, tất định theo (seed, epoch))."""
+        if self.max_per_user is None:
+            return
+        rng = np.random.default_rng(self.seed + 9973 * epoch)
+        key = rng.random(len(self.user_idx)).astype(np.float32)
+        order = np.lexsort((key, self.user_idx))             # sort (user, key ngẫu nhiên)
+        uo = self.user_idx[order]
+        idx = np.arange(len(uo))
+        new_grp = np.r_[True, uo[1:] != uo[:-1]]
+        start = np.maximum.accumulate(np.where(new_grp, idx, 0))
+        rank = idx - start                                   # thứ hạng ngẫu nhiên trong user
+        self.active = np.sort(order[rank < self.max_per_user])
 
     def __len__(self):
-        return len(self.user_idx)
+        return len(self.active)
 
     def __getitem__(self, i):
-        return int(self.user_idx[i]), int(self.anime_idx[i])
+        j = self.active[i]
+        return int(self.user_idx[j]), int(self.anime_idx[j])
 
 
 class Collate:
-    """Build batch tensor vectorized: history (gỡ anchor + dropout), hard-neg per-user
-    (sample m phân biệt + mask), gender/joined.
+    """Build batch tensor vectorized: history SAMPLE train_hist_len/anchor từ full list
+    (with-replacement khi list dài hơn L — chấp nhận dup nhẹ để vectorize; lấy-hết + pad
+    khi ngắn hơn), gỡ anchor + dropout; hard-neg per-user (sample m + mask); gender/joined.
 
     Là class (không phải closure) để PICKLE được -> num_workers>0 chạy trên cả macOS spawn
-    lẫn Linux fork. RNG seed lazily theo torch.initial_seed() (riêng mỗi worker & mỗi epoch,
-    suy ra tất định từ torch seed) -> randomness độc lập + reproducible.
+    lẫn Linux fork. RNG seed lazily theo torch.initial_seed() (riêng mỗi worker & mỗi epoch).
     """
 
-    def __init__(self, users: UserTable, hist_dropout: float, m_hardneg: int):
-        self.history_pad = users.history_pad
-        self.history_scores_pad = users.history_scores_pad
+    def __init__(self, users: UserTable, hist_dropout: float, m_hardneg: int, train_hist_len: int):
+        self.hist_vals = users.hist_vals
+        self.hist_scores = users.hist_scores
+        self.hist_offs = users.hist_offs
         self.hardneg_pad = users.hardneg_pad
         self.hardneg_len = users.hardneg_len
         self.gender_id = users.gender_id
@@ -127,6 +205,7 @@ class Collate:
         self.col_idx = np.arange(users.hardneg_pad.shape[1])
         self.hist_dropout = hist_dropout
         self.m_hardneg = m_hardneg
+        self.L = train_hist_len
         self._rng = None                                          # None lúc pickle; tạo trong worker
 
     def __call__(self, batch) -> Dict[str, torch.Tensor]:
@@ -137,9 +216,23 @@ class Collate:
         pos = np.fromiter((b[1] for b in batch), dtype=np.int64, count=len(batch))
         B = len(batch)
 
-        # history: gỡ anchor (pos) + bỏ pad
-        hist = self.history_pad[u]                                 # [B,30]
-        hist_mask = (hist != 0) & (hist != pos[:, None])
+        # history: sample L vị trí từ slice full của user
+        offs = self.hist_offs[u]                                   # [B]
+        lens = self.hist_offs[u + 1] - offs                        # [B]
+        L = self.L
+        ar = np.arange(L)[None, :]
+        long = lens > L
+        rand_pos = (rng.random((B, L)) * np.maximum(lens, 1)[:, None]).astype(np.int64)
+        take_pos = np.minimum(ar, np.maximum(lens - 1, 0)[:, None])
+        posn = np.where(long[:, None], rand_pos, take_pos)         # [B,L]
+        idx = offs[:, None] + posn
+        idx[lens == 0] = 0                                         # row rỗng: sentinel hợp lệ
+        hist = self.hist_vals[idx].astype(np.int64)                # [B,L]
+        hist_scores = self.hist_scores[idx].astype(np.int64)
+        hist_mask = np.where(long[:, None], True, ar < lens[:, None])
+        hist_mask &= lens[:, None] > 0
+        # gỡ anchor (with-replacement có thể dính anchor nhiều vị trí -> mask hết)
+        hist_mask &= hist != pos[:, None]
         # history dropout: bỏ toàn bộ history của 1 phần example -> ép h_empty
         if self.hist_dropout > 0:
             drop = rng.random(B) < self.hist_dropout
@@ -147,20 +240,20 @@ class Collate:
 
         # hard-neg: sample m item PHÂN BIỆT từ pool của chính user (without-replacement).
         # Thiếu (lens < m) -> phần dư là PAD + mask False (đừng bịa hard-neg).
-        lens = self.hardneg_len[u]                                 # [B]
+        hn_lens = self.hardneg_len[u]                              # [B]
         hn_pool = self.hardneg_pad[u]                              # [B, cap]
         keys = rng.random((B, hn_pool.shape[1]))
-        keys[self.col_idx[None, :] >= lens[:, None]] = np.inf     # cột pad -> sort xuống cuối
+        keys[self.col_idx[None, :] >= hn_lens[:, None]] = np.inf  # cột pad -> sort xuống cuối
         chosen = np.argsort(keys, axis=1)[:, :self.m_hardneg]     # [B,m] m cột valid random
         hn_ids = np.take_along_axis(hn_pool, chosen, axis=1)      # [B,m]
-        hn_mask = np.arange(self.m_hardneg)[None, :] < lens[:, None]  # [B,m] True = hard-neg thật
+        hn_mask = np.arange(self.m_hardneg)[None, :] < hn_lens[:, None]  # [B,m]
 
         return {
             "user_idx": torch.from_numpy(u),
             "pos": torch.from_numpy(pos),
             "history_ids": torch.from_numpy(hist).long(),
             "history_mask": torch.from_numpy(hist_mask),
-            "history_scores": torch.from_numpy(self.history_scores_pad[u]).long(),
+            "history_scores": torch.from_numpy(hist_scores).long(),
             "hardneg_ids": torch.from_numpy(hn_ids).long(),
             "hardneg_mask": torch.from_numpy(hn_mask),
             "gender_id": torch.from_numpy(self.gender_id[u]),

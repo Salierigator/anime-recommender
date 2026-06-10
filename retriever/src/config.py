@@ -35,10 +35,12 @@ class TwoTowerConfig:
     id_dropout: float = 0.2          # prob mask id->OOV mỗi item lúc train (backoff content)
     score_pool: str = "none"         # weighted history pooling theo điểm: 'none'|'linear'|'learned'
     history_pool: str = "mean"       # gộp history: 'mean' (±score_pool) | 'attn' (learned-query attention, bỏ qua score_pool)
+    history_source: str = "cache"    # nguồn vec phía history: 'cache' (item-vec detach) | 'embed' (bảng Embedding trainable riêng)
 
     # --- loss ---
     tau: float = 0.07                # temperature
     beta: float = 1.0                # trọng số nhánh hard-neg trong mẫu số
+    logq_alpha: float = 1.0          # hệ số logQ correction (1.0 = full, 0 = tắt)
 
     # --- train ---
     lr: float = 1e-3
@@ -48,11 +50,15 @@ class TwoTowerConfig:
     epochs: int = 1
     hist_dropout: float = 0.12       # prob bỏ toàn bộ history -> h_empty
     m_hardneg: int = 3               # số hard-neg sample mỗi anchor
+    train_hist_len: int = 32         # số item history sample mỗi anchor (từ full list; augmentation)
+    max_examples_per_user: Optional[int] = None  # cap example/user/epoch (resample mỗi epoch; None = off)
     cache_refresh_steps: int = 300   # refresh item-vec cache mỗi N step
     log_every: int = 50
 
-    # --- eval (cold-by-user) ---
-    eval_ks: List[int] = field(default_factory=lambda: [10, 50, 100])
+    # --- eval (cold-by-user, protocol v2) ---
+    eval_ks: List[int] = field(default_factory=lambda: [10, 50, 100, 200, 500])
+    headline_k: int = 200            # metric chọn checkpoint = recall@headline_k (warm val)
+    eval_history_cap: int = 1024     # prefix history (đã sort score desc) dùng lúc eval
     eval_split: str = "val"
     eval_every_steps: int = 0        # eval val mỗi N step trong epoch (0 = chỉ cuối epoch)
 

@@ -1,11 +1,21 @@
-# MF (implicit ALS, factors=64, iters=15) + fold-in — split=test  (trained on split=train)
-# generated 2026-06-06T23:20:39  device=mps
-# users evaluated: 13,790   candidates (finite logq): 22,821
+# MF (implicit ALS, factors=64, iters=15) + fold-in — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-10T21:48:36  device=mps  trained on split=train
+# candidates (finite logq): 22,821
 
-recall@10   = 0.113957
-recall@50   = 0.275195
-recall@100  = 0.378101
+## warm (test)  (users: 14,250)
+recall@10   = 0.195064
+recall@50   = 0.447739
+recall@100  = 0.575908
+recall@200  = 0.698857
+recall@500  = 0.835245
 
-ndcg@10     = 0.287643
-ndcg@50     = 0.281226
-ndcg@100    = 0.316922
+ndcg@10     = 0.677119
+ndcg@50     = 0.564444
+ndcg@100    = 0.576593
+ndcg@200    = 0.620144
+ndcg@500    = 0.678345
+
+## cold (test_cold)
+N/A — item factors của H không được học (H cách ly khỏi train);
+ALS không score được item ngoài train. Comparator cold: content_based / meta_popular.
+

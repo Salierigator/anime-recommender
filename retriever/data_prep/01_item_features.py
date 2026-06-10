@@ -1,9 +1,11 @@
-"""01 — Item features + anime id map cho Two-Tower retrieval.
+"""01 — Item features + anime id map + cold-item set H cho Two-Tower retrieval.
 
 Đọc cleaned-data/details.csv (pandas, file nhỏ), encode toàn bộ feature item theo
 note.txt, re-index mal_id -> anime_idx (0=PAD, 1=OOV, real 2..N+1 sort theo mal_id).
+v2: chọn thêm tập cold H = ~COLD_FRAC anime mới nhất theo start_date (null date ->
+loại khỏi candidacy) — 05 dùng để cách ly khỏi training, eval dùng làm cold slice.
 Ghi: train-data/anime_id_map.parquet, train-data/item_features.parquet,
-     train-data/_spec_item.json  (item-half của feature_spec, merge ở script 06).
+     train-data/cold_items.parquet, train-data/_spec_item.json (merge ở script 06).
 
 Bucket edges copy verbatim từ scripts/details_audit (start_date ERA_BINS, episodes
 BUCKET_BINS) để khớp với audit. Encoding tất định: vocab map lưu trong spec -> serve
@@ -14,12 +16,15 @@ Usage:
 """
 import ast
 import json
+import math
 import pathlib
 from collections import Counter
 
 import numpy as np
 import pandas as pd
 import polars as pl
+
+from prep_config import COLD_FRAC
 
 ROOT = pathlib.Path(__file__).parent.parent.parent
 SRC = ROOT / "cleaned-data" / "details.csv"
@@ -115,7 +120,8 @@ def main():
     rating_codes, rating_map = encode_cat(df["rating"])
     demo_codes, demo_map = encode_demographics(df["demographics"])
 
-    year = pd.to_datetime(df["start_date"], errors="coerce", utc=True).dt.year
+    dates = pd.to_datetime(df["start_date"], errors="coerce", utc=True)
+    year = dates.dt.year
     startyear_bucket = bucketize(year, ERA_BINS)
     episodes_bucket = bucketize(df["episodes"], EP_BINS)
 
@@ -173,9 +179,34 @@ def main():
                     ).write_parquet(OUT / "anime_id_map.parquet")
     print(f"anime_id_map.parquet: {n:,} rows")
 
+    # --- cold-item set H: COLD_FRAC anime mới nhất theo start_date (null -> không candidacy).
+    # Tie cùng ngày phá bằng thứ tự df (mal_id asc, mergesort stable) -> tất định.
+    n_cold = math.ceil(COLD_FRAC * n)
+    valid = dates.notna()
+    newest = dates[valid].sort_values(ascending=False, kind="mergesort")
+    cold_rows = newest.index[:n_cold]
+    cold_mask = np.zeros(n, dtype=bool)
+    cold_mask[cold_rows] = True
+    cutoff = newest.iloc[n_cold - 1]
+    pl.DataFrame({
+        "anime_idx": anime_idx[cold_mask],
+        "mal_id": df.loc[cold_mask, "mal_id"].to_numpy(),
+        "start_date": df.loc[cold_mask, "start_date"].astype(str).to_numpy(),
+    }).with_columns(
+        pl.col("anime_idx").cast(pl.Int32), pl.col("mal_id").cast(pl.Int64),
+    ).write_parquet(OUT / "cold_items.parquet")
+    print(f"cold_items.parquet: {n_cold:,} anime (frac {COLD_FRAC}, cutoff {cutoff.date()}, "
+          f"{int((~valid).sum())} null-date excluded)")
+
     spec_item = {
         "special_idx": {"PAD": PAD, "OOV": OOV, "first_real": FIRST_REAL},
         "num_items": n + 2,
+        "cold_items": {
+            "frac": COLD_FRAC,
+            "n_cold": int(n_cold),
+            "cutoff_date": str(cutoff.date()),
+            "n_null_date_excluded": int((~valid).sum()),
+        },
         "item_features": {
             "type": {"kind": "cat", "vocab": len(type_map) + 1, "dim": DIMS["type"],
                      "oov_id": 0, "map": type_map},

@@ -1,11 +1,21 @@
-# MostPopular baseline — split=test  (popularity counted on split=train)
-# generated 2026-06-05T12:00:31  device=mps
-# users evaluated: 13,790   candidates (finite logq): 22,821
+# MostPopular baseline — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-10T21:42:45  device=mps  popularity on split=train
+# candidates (finite logq): 22,821
 
-recall@10   = 0.056754
-recall@50   = 0.169287
-recall@100  = 0.262411
+## warm (test)  (users: 14,250)
+recall@10   = 0.086499
+recall@50   = 0.231906
+recall@100  = 0.332112
+recall@200  = 0.451557
+recall@500  = 0.627850
 
-ndcg@10     = 0.164431
-ndcg@50     = 0.170135
-ndcg@100    = 0.204319
+ndcg@10     = 0.352722
+ndcg@50     = 0.287960
+ndcg@100    = 0.307473
+ndcg@200    = 0.353093
+ndcg@500    = 0.425693
+
+## cold (test_cold)
+N/A — popularity train của mọi item H = 0 by construction (H cách ly khỏi train),
+không bao giờ lọt top-K -> recall/hitrate cold = 0. Prior cold-capable: meta_popular.py.
+

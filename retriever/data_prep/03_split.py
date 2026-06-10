@@ -5,21 +5,20 @@ support/query ở script 05); user 1..10 positive luôn về train. Drop n_pos==
 Split tất định bằng stable-hash(username, SEED) (reproducible, không RNG).
 
 In:  train-data/_user_stats.parquet
-Out: train-data/_user_split.parquet (username, user_idx, split, n_pos, n_dropped),
+Out: train-data/_user_split.parquet (username, user_idx, split, n_pos, n_hardneg),
      train-data/user_id_map.parquet (username, user_idx)
 
 Usage:
-    python scripts/build_train_data/03_split.py
+    venv/bin/python retriever/data_prep/03_split.py
 """
 import pathlib
 
 import polars as pl
 
+from prep_config import EVAL_MIN_POS, SEED
+
 ROOT = pathlib.Path(__file__).parent.parent.parent
 OUT = ROOT / "retriever" / "train-data"
-
-SEED = 42
-EVAL_MIN_POS = 11  # đủ support + query
 
 
 def main():

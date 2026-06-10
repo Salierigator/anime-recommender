@@ -1,11 +1,21 @@
-# ItemKNN (item-item cosine, K=200) baseline — split=test  (co-occurrence on split=train)
-# generated 2026-06-05T12:01:49  device=mps
-# users evaluated: 13,790   candidates (finite logq): 22,821   sim nnz: 4,388,861
+# ItemKNN (item-item cosine, K=200) — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-10T21:44:52  device=mps  co-occurrence on split=train, sim nnz=4,283,031
+# candidates (finite logq): 22,821
 
-recall@10   = 0.081085
-recall@50   = 0.216305
-recall@100  = 0.317922
+## warm (test)  (users: 14,250)
+recall@10   = 0.121096
+recall@50   = 0.291585
+recall@100  = 0.410468
+recall@200  = 0.572186
+recall@500  = 0.797882
 
-ndcg@10     = 0.223175
-ndcg@50     = 0.223365
-ndcg@100    = 0.259923
+ndcg@10     = 0.468476
+ndcg@50     = 0.373971
+ndcg@100    = 0.395855
+ndcg@200    = 0.458613
+ndcg@500    = 0.552382
+
+## cold (test_cold)
+N/A — H không có co-occurrence train -> similarity = 0, không score được.
+Comparator cold: content_based / meta_popular.
+

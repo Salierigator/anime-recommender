@@ -5,31 +5,30 @@ type/source/rating/demographics/start_year/episodes + multi-hot studios). Cột 
 down-weight (tag/feature phổ biến nhẹ đi), rồi L2-normalize từng item.
 
 User (cold) -> profile = mean content-vector của history (support), L2-norm; score =
-cosine(profile, mọi item). Mask non-candidate (logq) + item đã seen, top-K, đo
-recall@K/ndcg@K y hệt protocol metrics.evaluate. Không train (chỉ tính IDF tất định).
+cosine(profile, mọi item). Protocol v2: mask seen−query, history prefix cap. Không
+train (chỉ IDF tất định) -> cold-capable (content vector của H tồn tại) — đây là
+comparator chính của model trên cold slice.
 
 So sánh: dùng CÙNG history như user-tower -> apples-to-apples ("Two-Tower có hơn pure
-content-similarity không?"). Output -> model/baselines/content_based.txt.
+content-similarity không?"). Output -> retriever/baselines/content_based.txt.
 
-Usage: venv/bin/python model/baselines/content_based.py
+Usage: venv/bin/python retriever/baselines/content_based.py
 """
 from __future__ import annotations
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "src"))                 # model/ -> import flat config/data/metrics
-import config as cfg_mod
+sys.path.insert(0, str(HERE.parent / "src"))                 # import flat config/data/metrics
 import data as data_mod
-from metrics import group_examples
 import _eval
 
 SPLIT = "test"
+BATCH = 64            # gather [E, W<=1024, 423] — batch nhỏ để không phình memory
 
 
 def build_content_matrix(cfg) -> np.ndarray:
@@ -83,32 +82,26 @@ def build_content_matrix(cfg) -> np.ndarray:
 
 
 def main():
-    cfg = cfg_mod.TwoTowerConfig()
-    spec = data_mod.load_feature_spec(cfg.train_data)
-    logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
-    users = data_mod.UserTable(cfg.train_data, spec["k_history"], spec["hard_neg_cap"])
-
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
     Cn = torch.from_numpy(build_content_matrix(cfg)).to(cfg.device)          # [N, D]
 
     def score_fn(u, hist):
-        v = Cn[hist]                                                         # [E, Hk, D]
-        mask = (hist != 0).unsqueeze(-1).float()                            # [E, Hk, 1]
+        v = Cn[hist]                                                         # [E, W, D]
+        mask = (hist != 0).unsqueeze(-1).float()                            # [E, W, 1]
         prof = (v * mask).sum(1) / mask.sum(1).clamp(min=1.0)                # [E, D] mean history
         prof = torch.nn.functional.normalize(prof, dim=1)
         return prof @ Cn.t()                                                # [E, N] cosine
 
-    smoke = "--smoke" in sys.argv
-    ds = data_mod.ExamplesDataset(cfg.train_data, SPLIT, subset=4000 if smoke else None)
-    queries = group_examples(ds.user_idx, ds.anime_idx)
-    out, n, n_cand = _eval.rank_eval(cfg, users, queries, logq, score_fn, cfg.eval_ks)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks,
+                                         m_warm, batch=BATCH)
+    out_c, n_c, _ = _eval.rank_eval(cfg, users, q_cold, logq, score_fn, cfg.eval_ks,
+                                    m_cold, batch=BATCH, pooled=True)
 
-    header = [
-        f"# Content-based baseline (mean + IDF) — split={SPLIT}{' [SMOKE]' if smoke else ''}",
-        f"# generated {datetime.now().isoformat(timespec='seconds')}  device={cfg.device}",
-        f"# users evaluated: {n:,}   candidates (finite logq): {n_cand:,}   content_dim: {Cn.shape[1]}",
-    ]
-    out_name = "content_based_smoke.txt" if smoke else "content_based.txt"
-    _eval.write_result(HERE / out_name, header, out, cfg.eval_ks)
+    lines = _eval.header("Content-based baseline (mean + IDF)", cfg, SPLIT, n_cand,
+                         extra=f"content_dim={Cn.shape[1]}")
+    lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
+    lines += _eval.section("cold (test_cold, full-catalog)", out_c, cfg.eval_ks, n_c, pooled=True)
+    _eval.write_result(HERE / "content_based.txt", lines)
 
 
 if __name__ == "__main__":

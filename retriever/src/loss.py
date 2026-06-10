@@ -1,7 +1,7 @@
-"""InfoNCE + logQ correction + temperature + hard-neg per-anchor (xem plan.md §4,§5).
+"""InfoNCE + logQ correction + temperature + hard-neg per-anchor (xem docs/TWO_TOWER_MODEL.md).
 
 - s(i,x) = (U_i · V_x)/tau, U,V đã L2-normalize (cosine).
-- logQ áp lên in-batch (gồm positive), KHÔNG áp hard-neg.
+- logQ (× logq_alpha) áp lên in-batch (gồm positive), KHÔNG áp hard-neg.
 - mask false-negative: 2 anchor trùng pos_item -> -inf (đừng tự phạt positive của mình).
 - mask pad hard-neg -> -inf. beta scale nhánh hard-neg trong mẫu số (cộng log beta).
 """
@@ -13,7 +13,7 @@ import torch.nn.functional as F
 NEG_INF = float("-inf")
 
 
-def info_nce_logq(U, V_pos, V_hn, hardneg_mask, pos_idx, logq, tau, beta):
+def info_nce_logq(U, V_pos, V_hn, hardneg_mask, pos_idx, logq, tau, beta, logq_alpha=1.0):
     """
     U          [B, d]      user vec (normalized)
     V_pos      [B, d]      positive item vec (normalized)
@@ -21,12 +21,14 @@ def info_nce_logq(U, V_pos, V_hn, hardneg_mask, pos_idx, logq, tau, beta):
     hardneg_mask [B, m]    bool, True = hard-neg thật
     pos_idx    [B]         anime_idx của positive (cho logQ + false-neg mask)
     logq       [num_items] dense logQ (-inf cho non-candidate)
+    logq_alpha float       hệ số correction (1.0 = full, 0 = tắt)
     """
     B = U.shape[0]
 
     # in-batch logits: cột j = positive của anchor j
     s_in = (U @ V_pos.t()) / tau                          # [B, B]
-    s_in = s_in - logq[pos_idx].unsqueeze(0)             # trừ logQ theo cột (item-as-positive)
+    if logq_alpha != 0.0:
+        s_in = s_in - logq_alpha * logq[pos_idx].unsqueeze(0)  # trừ logQ theo cột (item-as-positive)
 
     # mask false-negative: i != j nhưng pos[i] == pos[j]
     same = pos_idx.unsqueeze(0) == pos_idx.unsqueeze(1)  # [B, B]

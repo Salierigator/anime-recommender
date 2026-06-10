@@ -1,5 +1,7 @@
 # Ranker (GBDT Reranking)
 
+> **⚠ STALE** — toàn bộ số đo trong file này theo **protocol v1 + artifacts v1** (best.pt cũ). Retriever đang rebuild (data v2 + protocol v2, xem `PROGRESS.md`); khi retriever v2 chốt phải export lại artifacts + retrain ranker + đo lại. Nội dung thiết kế (label/candidate/feature/blend) vẫn đúng để tham khảo.
+
 Doc thiết kế cho `ranker/src/` — **build cái gì, set up thế nào, vì sao**. Stage 2 của recommender: rerank top-K cosine của retriever bằng feature giàu hơn (popularity, quality, recency, affinity nội dung) mà embedding khó biểu diễn rẻ. Ăn artifacts firewall `artifacts/` + feature thô `cleaned-data/`, đẻ ra `artifacts/ranker.txt`.
 
 ---

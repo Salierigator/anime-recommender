@@ -5,15 +5,15 @@ score được). "Train" = dựng ma trận user×item từ TRAIN positives -> s
 cosine (top-K neighbor mỗi item, qua implicit.CosineRecommender, chỉ đếm co-occurrence trên
 train -> không leak test).
 
-User (cold): score(i) = Σ_{j∈history} cosine(i, j). Mask non-candidate (logq) + item đã seen,
-top-K, đo recall@K/ndcg@K y hệt protocol. Output -> model/baselines/itemknn.txt.
+User (cold): score(i) = Σ_{j∈history} cosine(i, j). Protocol v2: mask seen−query,
+history prefix cap. Cold slice: N/A by construction — H không có co-occurrence train,
+similarity với H = 0. Output -> retriever/baselines/itemknn.txt.
 
-Usage: venv/bin/python model/baselines/itemknn.py
+Usage: venv/bin/python retriever/baselines/itemknn.py
 """
 from __future__ import annotations
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -22,10 +22,8 @@ import torch
 from implicit.nearest_neighbours import CosineRecommender
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "src"))                 # model/ -> import flat config/data/metrics
-import config as cfg_mod
+sys.path.insert(0, str(HERE.parent / "src"))                 # import flat config/data/metrics
 import data as data_mod
-from metrics import group_examples
 import _eval
 
 SPLIT = "test"
@@ -43,10 +41,7 @@ def build_user_items(cfg, num_users, num_items, subset=None) -> sp.csr_matrix:
 
 
 def main():
-    cfg = cfg_mod.TwoTowerConfig()
-    spec = data_mod.load_feature_spec(cfg.train_data)
-    logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
-    users = data_mod.UserTable(cfg.train_data, spec["k_history"], spec["hard_neg_cap"])
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
     smoke = "--smoke" in sys.argv
 
@@ -56,9 +51,9 @@ def main():
     S = model.similarity.tocsr().astype(np.float32)                          # [N, N] top-K item-item
 
     def score_fn(u, hist):
-        h = hist.cpu().numpy()                                              # [E, Hk]
-        E, Hk = h.shape
-        rows = np.repeat(np.arange(E), Hk)
+        h = hist.cpu().numpy()                                              # [E, W]
+        E, W = h.shape
+        rows = np.repeat(np.arange(E), W)
         cols = h.reshape(-1)
         keep = cols != 0                                                    # bỏ pad
         H = sp.csr_matrix(
@@ -68,17 +63,17 @@ def main():
         scores = np.asarray((H @ S).todense(), dtype=np.float32)            # [E, N]
         return torch.from_numpy(scores).to(cfg.device)
 
-    ds = data_mod.ExamplesDataset(cfg.train_data, SPLIT, subset=4000 if smoke else None)
-    queries = group_examples(ds.user_idx, ds.anime_idx)
-    out, n, n_cand = _eval.rank_eval(cfg, users, queries, logq, score_fn, cfg.eval_ks)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
 
-    header = [
-        f"# ItemKNN (item-item cosine, K={KNN}) baseline — split={SPLIT}{' [SMOKE]' if smoke else ''}  (co-occurrence on split=train)",
-        f"# generated {datetime.now().isoformat(timespec='seconds')}  device={cfg.device}",
-        f"# users evaluated: {n:,}   candidates (finite logq): {n_cand:,}   sim nnz: {S.nnz:,}",
-    ]
-    out_name = "itemknn_smoke.txt" if smoke else "itemknn.txt"
-    _eval.write_result(HERE / out_name, header, out, cfg.eval_ks)
+    lines = _eval.header(
+        f"ItemKNN (item-item cosine, K={KNN})" + (" [SMOKE]" if smoke else ""),
+        cfg, SPLIT, n_cand, extra=f"co-occurrence on split=train, sim nnz={S.nnz:,}")
+    lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
+    lines += ["## cold (test_cold)",
+              "N/A — H không có co-occurrence train -> similarity = 0, không score được.",
+              "Comparator cold: content_based / meta_popular.",
+              ""]
+    _eval.write_result(HERE / ("itemknn_smoke.txt" if smoke else "itemknn.txt"), lines)
 
 
 if __name__ == "__main__":

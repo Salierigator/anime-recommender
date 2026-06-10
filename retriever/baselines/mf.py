@@ -5,15 +5,15 @@ của test user KHÔNG tồn tại. Cách hợp lệ: học item_factors trên T
 user **fold-in** = giải lại user-vector từ support history qua công thức ALS (model.recalculate_user)
 -> score = u · item_factorsᵀ. Không học tham số per-user nào của test (chỉ dùng history).
 
-Mask non-candidate (logq) + item đã seen, top-K, recall@K/ndcg@K y hệt protocol.
-Output -> model/baselines/mf.txt.
+Protocol v2: mask seen−query, history prefix cap. Cold slice: N/A by construction —
+item factors của H không được học (H cách ly khỏi train), ALS không score được item
+ngoài train. Output -> retriever/baselines/mf.txt.
 
-Usage: venv/bin/python model/baselines/mf.py
+Usage: venv/bin/python retriever/baselines/mf.py
 """
 from __future__ import annotations
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -22,10 +22,8 @@ import torch
 from implicit.als import AlternatingLeastSquares
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "src"))                 # model/ -> import flat config/data/metrics
-import config as cfg_mod
+sys.path.insert(0, str(HERE.parent / "src"))                 # import flat config/data/metrics
 import data as data_mod
-from metrics import group_examples
 import _eval
 
 SPLIT = "test"
@@ -45,10 +43,7 @@ def build_user_items(cfg, num_users, num_items, subset=None) -> sp.csr_matrix:
 
 
 def main():
-    cfg = cfg_mod.TwoTowerConfig()
-    spec = data_mod.load_feature_spec(cfg.train_data)
-    logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
-    users = data_mod.UserTable(cfg.train_data, spec["k_history"], spec["hard_neg_cap"])
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
     smoke = "--smoke" in sys.argv
 
@@ -60,9 +55,9 @@ def main():
     item_f = torch.from_numpy(np.asarray(model.item_factors, dtype=np.float32)).to(cfg.device)  # [N, f]
 
     def score_fn(u, hist):
-        h = hist.cpu().numpy()                                              # [E, Hk]
-        E, Hk = h.shape
-        rows = np.repeat(np.arange(E), Hk)
+        h = hist.cpu().numpy()                                              # [E, W]
+        E, W = h.shape
+        rows = np.repeat(np.arange(E), W)
         cols = h.reshape(-1)
         keep = cols != 0                                                    # bỏ pad
         H = sp.csr_matrix(
@@ -73,17 +68,17 @@ def main():
         uf = torch.from_numpy(np.asarray(uf, dtype=np.float32)).to(cfg.device)
         return uf @ item_f.t()                                             # [E, N]
 
-    ds = data_mod.ExamplesDataset(cfg.train_data, SPLIT, subset=4000 if smoke else None)
-    queries = group_examples(ds.user_idx, ds.anime_idx)
-    out, n, n_cand = _eval.rank_eval(cfg, users, queries, logq, score_fn, cfg.eval_ks)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
 
-    header = [
-        f"# MF (implicit ALS, factors={FACTORS}, iters={ITERS}) + fold-in — split={SPLIT}{' [SMOKE]' if smoke else ''}  (trained on split=train)",
-        f"# generated {datetime.now().isoformat(timespec='seconds')}  device={cfg.device}",
-        f"# users evaluated: {n:,}   candidates (finite logq): {n_cand:,}",
-    ]
-    out_name = "mf_smoke.txt" if smoke else "mf.txt"
-    _eval.write_result(HERE / out_name, header, out, cfg.eval_ks)
+    lines = _eval.header(
+        f"MF (implicit ALS, factors={FACTORS}, iters={ITERS}) + fold-in"
+        + (" [SMOKE]" if smoke else ""), cfg, SPLIT, n_cand, extra="trained on split=train")
+    lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
+    lines += ["## cold (test_cold)",
+              "N/A — item factors của H không được học (H cách ly khỏi train);",
+              "ALS không score được item ngoài train. Comparator cold: content_based / meta_popular.",
+              ""]
+    _eval.write_result(HERE / ("mf_smoke.txt" if smoke else "mf.txt"), lines)
 
 
 if __name__ == "__main__":

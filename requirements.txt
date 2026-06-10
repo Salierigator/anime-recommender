@@ -11,3 +11,4 @@ scipy
 implicit
 lightgbm
 requests
+pytest

@@ -12,12 +12,14 @@ venv/
 # Claude local state + guidance
 .claude/
 CLAUDE.md
+PROGRESS.md
 
 # Large data — KHÔNG đẩy GitHub (raw blocked + train-data frozen giữ trên Drive)
 data/
 cleaned-data/
 train-data/
 artifacts/
+legacy/
 
 # Model output (checkpoint persist trên Drive, không vào repo)
 retriever/checkpoints/

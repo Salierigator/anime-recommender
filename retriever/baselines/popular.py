@@ -1,110 +1,49 @@
-"""MostPopular baseline cho stage Retrieval — baseline THẬT phải vượt (không phải random).
+"""MostPopular baseline — popularity đếm trên TRAIN examples (protocol v2, warm only).
 
-Anime là domain mà popularity cực mạnh: luôn gợi ý top-K anime phổ biến nhất toàn cục
-(đếm trên split train, không leak test). Mỗi user test: chấm điểm = popularity, mask
-non-candidate (logq) + mask item đã seen trong history, top-K, đo recall@K / ndcg@K y hệt
-protocol metrics.evaluate. Lưu kết quả ra model/baselines/popular.txt.
+Cold slice: N/A by construction — mọi item H có popularity train = 0 (H bị cách ly
+khỏi train) -> không bao giờ lọt top-K, recall cold = 0 đúng nghĩa đen. Xem
+meta_popular.py cho prior popularity cold-capable (metadata members).
 
-Usage: venv/bin/python model/baselines/popular.py
+Usage: venv/bin/python retriever/baselines/popular.py
 """
 from __future__ import annotations
 
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import torch
 
 HERE = Path(__file__).resolve().parent
-sys.path.insert(0, str(HERE.parent / "src"))                 # model/ -> import flat config/data/metrics
-import config as cfg_mod
+sys.path.insert(0, str(HERE.parent / "src"))                 # import flat config/data/metrics
 import data as data_mod
-from metrics import group_examples
+import _eval
 
 SPLIT = "test"
 POP_SPLIT = "train"   # đếm popularity trên train -> không leak test
 
 
-def popularity_scores(cfg, N) -> torch.Tensor:
-    """Điểm popularity dense theo anime_idx = số lần xuất hiện trong examples split train."""
-    ds = data_mod.ExamplesDataset(cfg.train_data, POP_SPLIT)
-    counts = np.bincount(ds.anime_idx, minlength=N).astype(np.float32)
-    return torch.from_numpy(counts).to(cfg.device)
-
-
-def popular_eval(cfg, users, queries, logq, pop, ks, batch=512):
-    device = cfg.device
-    kmax = max(ks)
-    candidate_mask = torch.isfinite(logq).to(device)         # [N] item được rank
-    n_cand = int(candidate_mask.sum())
-    N = logq.shape[0]
-
-    discount = 1.0 / np.log2(np.arange(2, kmax + 2))
-    idcg_cum = np.cumsum(discount)
-
-    uids = list(queries.keys())
-    sums = {f"recall@{k}": 0.0 for k in ks}
-    sums.update({f"ndcg@{k}": 0.0 for k in ks})
-    n = 0
-
-    for s in range(0, len(uids), batch):
-        chunk = uids[s : s + batch]
-        u = np.asarray(chunk, dtype=np.int64)
-        hist = torch.from_numpy(users.history_pad[u]).long().to(device)
-        E = len(chunk)
-        scores = pop.unsqueeze(0).expand(E, N).clone()        # điểm = popularity (chung mọi user)
-        scores[:, ~candidate_mask] = float("-inf")
-        scores.scatter_(1, hist, float("-inf"))               # mask item đã seen
-        topk = torch.topk(scores, kmax, dim=1).indices.cpu().numpy()
-
-        for row, uid in enumerate(chunk):
-            rel = set(queries[uid])
-            R = len(rel)
-            if R == 0:
-                continue
-            hit = np.array([a in rel for a in topk[row]], dtype=np.float64)
-            for k in ks:
-                h = hit[:k]
-                sums[f"recall@{k}"] += h.sum() / R
-                sums[f"ndcg@{k}"] += (h * discount[:k]).sum() / idcg_cum[min(R, k) - 1]
-            n += 1
-
-    out = {m: (v / n if n else 0.0) for m, v in sums.items()}
-    return out, n, n_cand
-
-
 def main():
-    cfg = cfg_mod.TwoTowerConfig()
-    spec = data_mod.load_feature_spec(cfg.train_data)
-    logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
-    users = data_mod.UserTable(cfg.train_data, spec["k_history"], spec["hard_neg_cap"])
-
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
-    pop = popularity_scores(cfg, N)
+    ds = data_mod.ExamplesDataset(cfg.train_data, POP_SPLIT)
+    pop = torch.from_numpy(
+        np.bincount(ds.anime_idx, minlength=N).astype(np.float32)
+    ).to(cfg.device)
 
-    ds = data_mod.ExamplesDataset(cfg.train_data, SPLIT)
-    queries = group_examples(ds.user_idx, ds.anime_idx)
+    def score_fn(u, hist):
+        return pop.unsqueeze(0).expand(len(u), N).clone()
 
-    out, n, n_cand = popular_eval(cfg, users, queries, logq, pop, cfg.eval_ks)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
 
-    lines = [
-        f"# MostPopular baseline — split={SPLIT}  (popularity counted on split={POP_SPLIT})",
-        f"# generated {datetime.now().isoformat(timespec='seconds')}  device={cfg.device}",
-        f"# users evaluated: {n:,}   candidates (finite logq): {n_cand:,}",
-        "",
-    ]
-    for k in cfg.eval_ks:
-        lines.append(f"recall@{k:<4} = {out[f'recall@{k}']:.6f}")
-    lines.append("")
-    for k in cfg.eval_ks:
-        lines.append(f"ndcg@{k:<6} = {out[f'ndcg@{k}']:.6f}")
-    text = "\n".join(lines) + "\n"
-
-    print(text)
-    path = HERE / "popular.txt"
-    path.write_text(text)
-    print(f"saved {path}")
+    lines = _eval.header("MostPopular baseline", cfg, SPLIT, n_cand,
+                         extra=f"popularity on split={POP_SPLIT}")
+    lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
+    lines += ["## cold (test_cold)",
+              "N/A — popularity train của mọi item H = 0 by construction (H cách ly khỏi train),",
+              "không bao giờ lọt top-K -> recall/hitrate cold = 0. Prior cold-capable: meta_popular.py.",
+              ""]
+    _eval.write_result(HERE / "popular.txt", lines)
 
 
 if __name__ == "__main__":
