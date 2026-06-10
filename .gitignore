@@ -17,7 +17,15 @@ CLAUDE.md
 data/
 cleaned-data/
 train-data/
+artifacts/
 
 # Model output (checkpoint persist trên Drive, không vào repo)
-model/checkpoints/
+retriever/checkpoints/
 runs/
+
+# Secrets / API keys
+.env
+
+# API test dumps (responses fetched during testing)
+service/backend/api_test_output/
+service/backend/service_test_output/

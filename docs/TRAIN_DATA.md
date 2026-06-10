@@ -1,6 +1,6 @@
 # Train-Data Pipeline (Two-Tower Retrieval)
 
-Doc tổng hợp cho `scripts/build_train_data/` — giải thích **build cái gì, set up thế nào, vì sao**. Biến `cleaned-data/` → artifacts sẵn-sàng-train ở `train-data/`.
+Doc tổng hợp cho `retriever/data_prep/` — giải thích **build cái gì, set up thế nào, vì sao**. Biến `cleaned-data/` → artifacts sẵn-sàng-train ở `retriever/train-data/`.
 
 ---
 
@@ -38,10 +38,10 @@ Nguyên tắc phân định: thành phần **không đổi khi trọng số mode
 
 ---
 
-## 3. Output — artifacts `train-data/`
+## 3. Output — artifacts `retriever/train-data/`
 
 ```
-train-data/
+retriever/train-data/
 ├── feature_spec.json          # single source of truth: vocab map + size + dim + special idx + params
 ├── anime_id_map.parquet       # mal_id ↔ anime_idx (real)
 ├── user_id_map.parquet        # username ↔ user_idx
@@ -79,7 +79,7 @@ train-data/
 
 ## 4. Pipeline — 6 script + verify
 
-`scripts/build_train_data/`, chạy theo thứ tự, mỗi script standalone & re-runnable. Convention khớp `scripts/`: `ROOT = Path(__file__).parent.parent.parent`, pandas cho file nhỏ, polars `scan_csv(...).collect(engine="streaming")` cho `ratings.csv`. **2 streaming pass** trên 120M rows (02, 05); còn lại đọc artifact nhỏ.
+`retriever/data_prep/`, chạy theo thứ tự, mỗi script standalone & re-runnable. Convention: `ROOT = Path(__file__).parent.parent.parent` (= repo root) → `SRC = ROOT/"cleaned-data"`, `OUT = ROOT/"retriever"/"train-data"`; pandas cho file nhỏ, polars `scan_csv(...).collect(engine="streaming")` cho `ratings.csv`. **2 streaming pass** trên 120M rows (02, 05); còn lại đọc artifact nhỏ.
 
 | # | Script | Input | Output | Key |
 |---|---|---|---|---|
@@ -89,12 +89,12 @@ train-data/
 | 04 | `04_user_features.py` | `profiles.csv`, `_user_split` | `_user_feats`, `_spec_user.json` | gender_id, joined_bucket |
 | 05 | `05_history_examples.py` | `ratings.csv` (Pass-2), maps | `users.parquet`, `examples/` | history/hard_neg + support/query (chống leak) |
 | 06 | `06_logq_and_spec.py` | `examples/split=train`, specs | `logq`, `feature_spec.json` | merge spec + logQ |
-| 99 | `99_verify.py` | `train-data/` | — | check schema/range/leak end-to-end |
+| 99 | `99_verify.py` | `retriever/train-data/` | — | check schema/range/leak end-to-end |
 
 Chạy:
 ```bash
-for s in scripts/build_train_data/0[1-6]_*.py; do venv/bin/python "$s"; done
-venv/bin/python scripts/build_train_data/99_verify.py
+for s in retriever/data_prep/0[1-6]_*.py; do venv/bin/python "$s"; done
+venv/bin/python retriever/data_prep/99_verify.py
 ```
 
 ---
@@ -121,7 +121,7 @@ venv/bin/python scripts/build_train_data/99_verify.py
 - `history_scores` lấy từ **cùng các dòng đã sort** với `history_ids` → 2 list song song, không re-join. Tie giữa `score==0` phá bằng stable hash (reproducible).
 - `hard_neg_ids` = dropped item của user, dedup + sort + cap 64 (runtime sample m≈1–5).
 
-### 5.5 Feature encoding (scripts/*_audit/)
+### 5.5 Feature encoding (data_audit/codes/*_audit/)
 
 | Feature | Kind | Vocab/Width | Dim | Missing/OOV |
 |---|---|---|---|---|
@@ -137,7 +137,7 @@ venv/bin/python scripts/build_train_data/99_verify.py
 | gender | cat | 4 | 4 | nan → OOV(0) |
 | joined | bucket | 5 | 4 | NULL/unparseable gộp vào cohort mới nhất (2022+); không còn slot NULL |
 
-Bucket edges copy **verbatim** từ `scripts/details_audit/` (`start_date` ERA_BINS, `episodes` BUCKET_BINS) và `scripts/profiles_audit/audit_joined.py` (COHORT_BINS) để khớp audit. PAD/OOV item row: mọi feature = neutral 0 (id OOV/NULL, multi-hot toàn 0, `studio_ids=[0]`).
+Bucket edges copy **verbatim** từ `data_audit/codes/details_audit/` (`start_date` ERA_BINS, `episodes` BUCKET_BINS) và `data_audit/codes/profiles_audit/audit_joined.py` (COHORT_BINS) để khớp audit. PAD/OOV item row: mọi feature = neutral 0 (id OOV/NULL, multi-hot toàn 0, `studio_ids=[0]`).
 
 ### 5.6 logQ correction
 - Từ **TRAIN examples only** (chống leak): `Q(item) = count/total`, `log_q = log(max(count,1)/total)`. Floor `max(·,1)` để 871 anime chỉ xuất hiện ở val/test support vẫn finite.
@@ -157,7 +157,7 @@ Bucket edges copy **verbatim** từ `scripts/details_audit/` (`start_date` ERA_B
 
 ---
 
-## 7. Verify (`99_verify.py`, chỉ đọc `train-data/`)
+## 7. Verify (`99_verify.py`, chỉ đọc `retriever/train-data/`)
 
 1. `item_features` rows == `num_items`; mọi `*_id ∈ [0, vocab)`; multihot width 22/53, giá trị 0/1; studio id ∈ [0,302).
 2. `users` rows == `num_users`; `len(history_ids)==len(history_scores) ≤ 30`; gender/joined/hard_neg in-range.

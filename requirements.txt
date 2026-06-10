@@ -9,3 +9,5 @@ pyarrow
 torch
 scipy
 implicit
+lightgbm
+requests

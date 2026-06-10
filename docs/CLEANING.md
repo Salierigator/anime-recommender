@@ -86,7 +86,7 @@ Doc tổng hợp cho `cleaning.ipynb` — giải thích **clean cái gì, set up
 | `USER_MIN` | 10 | Tối thiểu để embedding user ổn định. Dưới 10 ratings, noise dominate signal. |
 | `ANIME_MIN` | 20 | Standard cho collab signal stable (industry 10–50). Anime <20 không học embedding tin cậy. |
 | `KCORE_MAX_ITER` | 20 | Safety cap; thực tế converge 2 iter. |
-| `SPAM_COUNT` | **2,000** | Data-driven từ `scripts/audit_bot_threshold.py`: trong subset users với `mean_score > 9`, p99.87 của `rated_count` ≈ 2,138. Cắt 2,000 catch 36 extreme outlier. Base là `rated_count` (rows có `score > 0`) để khớp với `mean_score`. |
+| `SPAM_COUNT` | **2,000** | Data-driven: trong subset users với `mean_score > 9`, p99.87 của `rated_count` ≈ 2,138. Cắt 2,000 catch 36 extreme outlier. Base là `rated_count` (rows có `score > 0`) để khớp với `mean_score`. |
 | `SPAM_MEAN` | 9.0 | Anime đạt mean > 9 theo global MAL consensus chỉ vài trăm bộ. User rate 2,000+ với mean > 9 = không organic. |
 | `CONST_COUNT` | 500 | Dưới 500 entries rated thì std<0.3 có thể organic (fan rate vài chục anime tủ). Trên 500 + std<0.3 = mass-add. Base là `rated_count`. |
 | `CONST_STD` | 0.3 | Strict hơn 0.5 để giảm FP. Real user rate 9-10 cũng có std ~0.7. std<0.3 với 500+ rated ≈ identical scores. |
