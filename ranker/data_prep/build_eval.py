@@ -5,10 +5,10 @@ Per eval user: U từ support (= history trong users_history, đã trừ query+H
 cosine với mask = seen − query (KHÔNG mask query — đáp án đang chấm; KHÔNG loại cold — warm
 eval cho cold cạnh tranh y như retriever) → features. Pool lưu sâu 500, eval slice 200/500.
 
-Output: ranker/data/pools/eval_{split}.parquet (qid contiguous, trong group sort cosine desc,
+Output: ranker/train-data/pools/eval_{split}.parquet (qid contiguous, trong group sort cosine desc,
 label binary = cand ∈ query) + eval_{split}_users.parquet (qid, r_total, U, hist_top64).
 
-    venv/bin/python ranker/src/build_eval.py [--splits val test val_cold]
+    venv/bin/python ranker/data_prep/build_eval.py [--splits val test val_cold]
 """
 from __future__ import annotations
 
@@ -20,12 +20,17 @@ from datetime import datetime, timezone
 import numpy as np
 import torch  # noqa: F401  (trước lightgbm ở downstream; giữ convention)
 
-import config
-from features import ItemFeatures, build_frame
-from pool import (PoolWriter, UsersHistory, account_age_by_user, cross_features,
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))   # lib chung ở ../src
+
+import config  # noqa: E402
+from features import ItemFeatures, build_frame  # noqa: E402
+from pool import (PoolWriter, UsersHistory, account_age_by_user, cross_features,  # noqa: E402
                   encode_users, load_eval_seen, load_queries, topk_pool,
                   user_stats_from_support)
-from user_encode import load_user_encoder
+from user_encode import load_user_encoder  # noqa: E402
 
 
 def build_split(split: str, enc, cap: int, itemfeat, V, uh: UsersHistory,

@@ -2,6 +2,8 @@
 
 Doc tổng hợp cho `retriever/data_prep/` — **build cái gì, set up thế nào, vì sao**. Biến `cleaned-data/` → artifacts sẵn-sàng-train ở `retriever/train-data/`. Split + định nghĩa support/query: `docs/DATA_SPLIT.md`.
 
+> ⚠️ Số liệu = snapshot run prep **2026-06-10**. Pipeline tất định (seed 42) — số chỉ đổi nếu sửa labels/constants trong `prep_config.py` và re-run; khi đó cập nhật lại bảng ở đây + `PROGRESS.md`.
+
 ---
 
 ## 1. Overview
@@ -12,8 +14,8 @@ Doc tổng hợp cho `retriever/data_prep/` — **build cái gì, set up thế n
 
 | | |
 |---|---|
-| Positives | 77.96M (`completed∪watching` & score∉[1,4]) |
-| Hard-neg | 8.03M (dropped 4.24M ∪ score≤4 mọi status) |
+| Positives | 77.96M (`completed∪watching` & score∉[1,4]) — count TOÀN BỘ trước split; sau split + cách ly H mới thành examples bên dưới |
+| Hard-neg | 8.03M (dropped 4.24M ∪ score≤4 mọi status) — count toàn bộ, trước cap 64/user và trừ H |
 | Users giữ (n_pos≥1) | 291,001 — train 262,676 / val 14,058 / test 14,267 |
 | Items | 22,823 = 22,821 anime + PAD + OOV |
 | **Cold H** | 1,142 anime (5% mới nhất, cutoff **2024-09-30**, 291 null-date loại) |
@@ -44,7 +46,7 @@ Hold-out **trọn user** 90/5/5, tất định `hash(username, SEED=42) % 100`; 
 Cùng tập eval user phục vụ 2 bộ đo: **warm** (tuning, headline recall@200) và **cold** (final exam — test_cold chấm 1 lần lúc cuối; val_cold để debug). Eval-user có thể 0 warm query (mọi positive đều H) — history rỗng → h_empty, vẫn có cold query.
 
 ### 3.3 Support/query warm (trên warm pool)
-Eval user: warm positives chia query (random tie-hash, `n_query = clip(round(0.2·n_warm), 1, n_warm−1)`; `n_warm<2` → 0 query) và support (→ history). Leak assert = 0.
+Eval user: warm positives chia query (random tie-hash, `n_query = min(max(round(0.2·n_warm), 1), n_warm−1)` — sàn 1 query nhưng luôn chừa ≥1 support; `n_warm<2` → vế `n_warm−1 ≤ 0` thắng → 0 query) và support (→ history). Leak assert = 0.
 
 ## 4. Output — artifacts `retriever/train-data/`
 
@@ -67,7 +69,19 @@ train-data/
 
 **`eval_seen.parquet`**: `user_idx`, `seen_ids(List[Int32], unique sorted)` — mọi interaction mọi status. Protocol eval: **mask = seen − query_đang_chấm** (query ⊆ seen nên không được mask thẳng seen).
 
-`item_features` schema + encoding 9 feature (vocab 10/18/7/6/6/8/22/53/302, bucket edges từ audit): nguồn sống là `data_prep/01_item_features.py` + `data_audit/output/`.
+**`item_features.parquet`** — 9 feature encode tất định ở `01_item_features.py` (vocab map đóng băng vào `feature_spec.json` → serve encode y hệt; bucket edges copy verbatim từ `data_audit/output/`):
+
+| Feature | Kiểu | Encode | Vocab/width | Vào tower |
+|---|---|---|---|---|
+| type | cat | distinct sorted → 1..k; null/unseen → 0 (OOV) | 10 | Emb dim 4 |
+| source | cat | như trên | 18 | Emb dim 8 |
+| rating | cat | như trên | 7 | Emb dim 4 |
+| demographics | single-tag | lấy tag đầu; 5 tag → 1..5; empty → 0 (none — closed set, không OOV) | 6 | Emb dim 4 |
+| start_year | bucket | era ≤1989 / 1990-99 / 2000-09 / 2010-17 / 2018+; null → 0 | 6 | Emb dim 4 |
+| episodes | bucket | 1 / 2 / 3-6 / 7-13 / 14-26 / 27-52 / 53+; null → 0 | 8 | Emb dim 4 |
+| genres | multi-hot | tag set sorted (21) + 1 cột "present" cuối | 22 | Linear 22→8 |
+| themes | multi-hot | như genres (52 tag + present) | 53 | Linear 53→8 |
+| studios | multi-value | studio occurrence ≥ 10 (300 tag); 0=empty, 1=OOV-studio, 2.. | 302 | Emb(302,16) masked-mean |
 
 ## 5. Pipeline — 6 script + verify
 

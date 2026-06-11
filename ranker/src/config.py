@@ -1,6 +1,7 @@
 """config.py — hằng số chung của ranker (path + knob build/train/eval).
 
-Path tính từ vị trí file (CWD chạy = ranker/src, import flat). Firewall: ranker chỉ ĐỌC
+Path tính từ vị trí file (Path(__file__), CWD-independent); lib chung ở src/ import flat qua
+sys.path (data_prep/ baselines/ + entrypoint top-level chèn src/ vào path). Firewall: ranker chỉ ĐỌC
 `artifacts/` + `cleaned-data/{details,profiles}.csv` (file nhỏ) — KHÔNG ratings.csv,
 KHÔNG retriever/train-data (mọi thứ cần đã được retriever/export.py đẩy sang artifacts).
 """
@@ -11,10 +12,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent          # ranker/
 ARTIFACTS = ROOT.parent / "artifacts"
 CLEANED = ROOT.parent / "cleaned-data"
-DATA = ROOT / "data"                                   # gitignored
-POOLS = DATA / "pools"                                 # eval pools (build_eval.py)
-DATASETS = DATA / "datasets"                           # train/valid (build_train.py)
-MODELS = DATA / "models"                               # model tải về từ Colab / train local
+DATA = ROOT / "train-data"                             # gitignored (KHÔNG đặt tên data/ — đụng root §0)
+POOLS = DATA / "pools"                                 # eval pools (data_prep/build_eval.py)
+DATASETS = DATA / "datasets"                           # train/valid (data_prep/build_train.py)
+MODELS = ROOT / "models"                               # gitignored: model tải về từ Colab + results.txt
 
 SEED = 42
 K_POOL = 200              # pool rerank lúc serve (two-stage); train candidates = top-K_POOL

@@ -1,6 +1,8 @@
 # Model (Two-Tower Retrieval)
 
-Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`).
+Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`). Baselines so sánh: `docs/BASELINES.md`.
+
+> ⚠️ Số liệu = snapshot **2026-06-11** (best hiện tại: `v5_hist64_ep2`, 2 epoch). Retriever còn tune tiếp trên Colab → best.pt và số có thể đổi; số mới nhất luôn ở root `PROGRESS.md`; tổng hợp kết quả + nguồn từng con số: `docs/RESULTS.md`. Kiến trúc/protocol thì ổn định.
 
 ---
 
@@ -53,7 +55,7 @@ InfoNCE + logQ + τ + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 t
 |---|---|
 | Model | `d`(128), `mlp_hidden`([256]), `use_item_id`(F), `id_dim`(64), `id_dropout`(.2), `history_pool`(mean), `score_pool`(none), **`history_source`(cache\|embed)** |
 | Loss | `tau`(.07), `beta`(1.0), **`logq_alpha`(1.0)** |
-| Train | `lr`(1e-3), `cosine_lr`(F), `weight_decay`(0), `batch_size`(4096), `epochs`, `hist_dropout`(.12), `m_hardneg`(3), **`train_hist_len`(32)**, **`max_examples_per_user`(None)**, `cache_refresh_steps`(300) |
+| Train | `lr`(1e-3), `cosine_lr`(F — bật = cosine-anneal lr về 0 theo tổng step, đáng bật khi train nhiều epoch), `weight_decay`(0), `batch_size`(4096), `epochs`, `hist_dropout`(.12), `m_hardneg`(3), **`train_hist_len`(32)**, **`max_examples_per_user`(None)**, `cache_refresh_steps`(300) |
 | Eval | **`eval_ks`([10,50,100,200,500])**, **`headline_k`(200)**, **`eval_history_cap`(1024)**, `eval_split`(val), `eval_every_steps`(0) |
 
 ## 7. Protocol eval (`metrics.py`) — phần quan trọng nhất
@@ -85,4 +87,17 @@ InfoNCE + logQ + τ + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 t
 venv/bin/python -m pytest retriever/tests -q          # invariants
 cd retriever/src && ../../venv/bin/python train.py --smoke   # end-to-end nhanh
 # train thật: train.ipynb trên Colab — train-data trên Drive phải khớp bản local
+venv/bin/python retriever/export.py && venv/bin/python retriever/test_export.py  # → artifacts/
 ```
+
+## 10. Export → `artifacts/` (firewall)
+
+`retriever/export.py` biến `checkpoints/best.pt` + `train-data/` thành bộ file ổn định trong `artifacts/` cho ranker + service (re-run mỗi khi best.pt đổi; schema chi tiết: `artifacts/CONTRACT.md` tự sinh):
+
+- **`item_vectors.npy`** `[N,128]` — chạy item-tower qua serve-path cache: **row item cold (H) encode id→OOV** (content thật, khớp đúng cách đã đo cold eval); row warm id thật.
+- **`item_index.parquet`** (anime_idx → mal_id + `is_cold`), **`user_split.parquet`**.
+- **`user_tower.pt`** — chỉ user-side state_dict (lọc bỏ `item_tower.*`) + đủ cfg/spec để service dựng lại `UserTower` không cần ItemTable; nếu `history_source=embed` thì đóng gói kèm bảng `hist_emb.*`.
+- **Eval protocol cho ranker**: `eval_queries_{val,test,val_cold}.parquet` + `eval_seen.parquet` + `users_history.parquet` (MỌI user, history FULL — ranker không stream ratings.csv). `eval_queries_test_cold` (final exam) CHỈ export khi `--final-exam`, default xoá file cũ để harness ranker không chấm nhầm.
+- `reconcile_spec_to_ckpt()`: nếu spec local đã regenerate khác lúc train (vd vocab joined đổi) → ép vocab theo shape checkpoint, in cảnh báo (không nuốt im).
+
+`retriever/test_export.py` validate firewall-faithful: dựng user-encoder **thuần từ artifacts** (user_tower.pt + item_vectors.npy — KHÔNG load best.pt để encode, đúng như service sẽ làm), assert invariants các file ranker (test_cold vắng mặt, users_history phủ đúng user_split, query∩history=∅, query⊆seen, cold query đều `is_cold`, history sort desc), rồi chấm lại đủ protocol warm val/test + val_cold và ghi **`eval_reference.json`** — mốc cho sanity gate của ranker (`ranker/eval.py --baseline-only`). Số qua artifacts lệch nhẹ số checkpoint (row H = OOV) — đó là chủ đích serve-path.

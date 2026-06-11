@@ -1,10 +1,10 @@
 """export.py (ranker) — chốt winner → artifacts/ranker.txt + ranker_meta.json (CHỈ 2 file này).
 
-Đọc ranker/data/eval_selection.json (eval.py ghi sau blend sweep + Pareto select). Winner phải
+Đọc ranker/models/eval_selection.json (eval.py ghi sau blend sweep + Pareto select). Winner phải
 là LightGBM (.txt) — contract serve; neural thắng thì vẫn chỉ ghi nhận trên leaderboard
 (đổi serving contract = quyết định riêng, không export ở đây).
 
-    venv/bin/python ranker/src/export.py
+    venv/bin/python ranker/export.py
 """
 from __future__ import annotations
 
@@ -16,12 +16,16 @@ from pathlib import Path
 import torch  # noqa: F401  (trước lightgbm)
 import lightgbm as lgb
 
-import config
-from features import CAT_COLS, FEATURE_NAMES
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))   # lib chung ở src/
+
+import config  # noqa: E402
+from features import CAT_COLS, FEATURE_NAMES  # noqa: E402
 
 
 def main() -> None:
-    sel = json.loads((config.DATA / "eval_selection.json").read_text())
+    sel = json.loads((config.MODELS / "eval_selection.json").read_text())
     model_path = Path(sel["model"])
     if model_path.suffix != ".txt":
         raise SystemExit(
@@ -42,6 +46,15 @@ def main() -> None:
         "blend": "score = (1-alpha)*rank_norm(cos_uv) + alpha*rank_norm(ranker_pred)",
         "cold_feature_policy": "is_cold -> mal_score/scored_by/members/favorites/popularity/"
                                "rank impute-as-missing + flag (features.py)",
+        "cold_serving": {
+            "mode": "separate_channel_cosine",
+            "rule": "main list = rerank ranker trên candidate WARM (lọc is_cold khỏi pool "
+                    "trước khi rerank); item cold phục vụ ở section riêng xếp theo cosine "
+                    "(retriever). KHÔNG đưa cold qua ranker/blend.",
+            "evidence": "α=1 blend dìm val_cold ndcg@10 .1572→.0008; in-list cold-bypass "
+                        "rule cứu cold về .1163 nhưng warm tụt .7103→.6434 — tách kênh giữ "
+                        "cả hai tối ưu (warm .7103, cold .1572). docs/RANKER.md §7.",
+        },
         "hist_feat_cap": config.HIST_FEAT_CAP, "eval_history_cap": 1024,
         "pareto_vs_cosine": sel["pareto"],
         "val_metrics": sel["val_metrics"], "baseline_val": sel["baseline_val"],

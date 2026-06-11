@@ -4,9 +4,9 @@ Modes:
   --baseline-only   SANITY GATE: xếp pool theo cos_uv → metrics PHẢI khớp
                     artifacts/eval_reference.json (~1e-3) — cùng encoder/mask/queries với
                     retriever. Fail = harness lệch protocol, KHÔNG được train tiếp.
-  (default)         Load model trong ranker/data/models/ (*.txt LightGBM, *.pt neural) →
+  (default)         Load model trong ranker/models/ (*.txt LightGBM, *.pt neural) →
                     sweep blend α trên VAL → Pareto-select vs cosine → report TEST + val_cold
-                    → ghi ranker/data/eval_selection.json (export.py đọc).
+                    → ghi ranker/models/eval_selection.json (export.py đọc).
   --k 500           Ablation pool depth (slice 200 mặc định từ pool sâu 500).
   --final-exam      test_cold (chấm 1 LẦN lúc chốt pipeline): cần export.py --final-exam trước.
 
@@ -26,9 +26,13 @@ import numpy as np
 import polars as pl
 import torch  # noqa: F401  (trước lightgbm)
 
-import config
-from features import FEATURE_NAMES
-from metrics import blend, eval_pool, fmt
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))   # lib chung ở src/
+
+import config  # noqa: E402
+from features import FEATURE_NAMES  # noqa: E402
+from metrics import blend, eval_pool, fmt  # noqa: E402
 
 SEL_METRICS = ["recall@10", "recall@100", "ndcg@10", "ndcg@100"]
 
@@ -130,7 +134,7 @@ def main() -> None:
     ap.add_argument("--baseline-only", action="store_true")
     ap.add_argument("--k", type=int, default=config.K_POOL, choices=[200, 500])
     ap.add_argument("--models", nargs="*", type=Path,
-                    help="default: mọi *.txt/*.pt trong ranker/data/models/")
+                    help="default: mọi *.txt/*.pt trong ranker/models/")
     ap.add_argument("--final-exam", action="store_true",
                     help="chấm test_cold 1 LẦN (cần export.py --final-exam + selection có sẵn)")
     args = ap.parse_args()
@@ -177,16 +181,16 @@ def main() -> None:
         "pool_ceiling": {"val": base_val[f"recall@{args.k}"],
                          "test": base_test[f"recall@{args.k}"]},
     }
-    config.DATA.mkdir(exist_ok=True)
-    (config.DATA / "eval_selection.json").write_text(json.dumps(sel, indent=2))
-    print(f"\nselection -> {config.DATA / 'eval_selection.json'}  ({time.time() - t0:.0f}s)")
+    config.MODELS.mkdir(exist_ok=True)
+    (config.MODELS / "eval_selection.json").write_text(json.dumps(sel, indent=2))
+    print(f"\nselection -> {config.MODELS / 'eval_selection.json'}  ({time.time() - t0:.0f}s)")
 
 
 def run_final_exam() -> None:
     """FINAL EXAM — test_cold, chấm đúng 1 lần với cấu hình đã chốt trong eval_selection.json."""
     assert (config.ARTIFACTS / "eval_queries_test_cold.parquet").exists(), \
         "cần `venv/bin/python retriever/export.py --final-exam` trước"
-    sel = json.loads((config.DATA / "eval_selection.json").read_text())
+    sel = json.loads((config.MODELS / "eval_selection.json").read_text())
     if not (config.POOLS / "eval_test_cold.parquet").exists():
         import build_eval
         from features import ItemFeatures
@@ -208,7 +212,7 @@ def run_final_exam() -> None:
     print(f"  ranker : {fmt(m, config.KS)}")
     sel["test_cold_metrics"] = m
     sel["baseline_test_cold"] = base
-    (config.DATA / "eval_selection.json").write_text(json.dumps(sel, indent=2))
+    (config.MODELS / "eval_selection.json").write_text(json.dumps(sel, indent=2))
 
 
 if __name__ == "__main__":

@@ -1,8 +1,10 @@
-# RANKER — GBDT rerank stage 2 (rebuild 2026-06-11)
+# RANKER — GBDT rerank stage 2 (rebuild + CHỐT 2026-06-11: xendcg α=1, cold tách kênh)
 
 > Thay thế hoàn toàn doc cũ (`legacy/docs/RANKER.md` — protocol cũ, số liệu vô giá trị).
 > Đọc kèm: `artifacts/CONTRACT.md` (schema file), `docs/DATA_SPLIT.md` (protocol gốc),
 > `ranker/CLAUDE.md` (firewall + lệnh chạy).
+
+> ⚠️ Số liệu = snapshot **2026-06-11** (retriever `v5_hist64_ep2` → ranker `xendcg_lr05_l63`). Retriever còn tune → mỗi lần best.pt đổi phải chạy lại loop §9, số sẽ đổi theo; số mới nhất: root `PROGRESS.md`. Tổng hợp mọi kết quả + bản đồ nguồn từng con số: `docs/RESULTS.md`. Protocol/kiến trúc/quyết định thiết kế thì ổn định.
 
 ## 1. Vai trò & kiến trúc
 
@@ -32,15 +34,18 @@ Two-stage: retriever (two-tower) trả top-K cosine → **ranker rerank** để 
 
 ```
 retriever/export.py ──> artifacts/{item_vectors, user_tower, user_split,
-                                   eval_queries_{val,test,val_cold}, eval_seen,
-                                   users_history, eval_reference.json}
-ranker/src/build_eval.py  ──> data/pools/eval_{val,test,val_cold}{,_users}.parquet   (depth 500)
-ranker/src/build_train.py ──> data/datasets/train{,_users}.parquet + build_meta.json (K=200)
+                                   eval_queries_{val,test,val_cold}, eval_seen, users_history}
+retriever/test_export.py ──> artifacts/eval_reference.json (cosine baseline đo QUA artifacts)
+ranker/data_prep/build_eval.py  ──> train-data/pools/eval_{val,test,val_cold}{,_users}.parquet (depth 500)
+ranker/data_prep/build_train.py ──> train-data/datasets/train{,_users}.parquet + build_meta.json (K=200)
         │ (upload Drive: datasets/* + pools/eval_val* + item_vectors.npy)
 ranker/train.ipynb (Colab) ──> Drive runs_ranker/<ver>/<run>/{model.*, row.json} + ranker_runs.csv
-        │ (tải winner về data/models/<run>/)
-ranker/src/eval.py        ──> blend sweep + Pareto select + test report + val_cold
-ranker/src/export.py      ──> artifacts/ranker.txt + ranker_meta.json
+        │ (tải winner về models/<run>/)
+ranker/eval.py            ──> blend sweep + Pareto select + test report + val_cold
+                              (+ ghi models/eval_selection.json — bản ghi đầy đủ lúc chọn)
+ranker/report_models.py    > models/<run>/results.txt (per-model: sweep α + val per-K + cold
+                              diagnostic, kiểu baselines/*.txt — CHỈ VAL, giữ kỷ luật test)
+ranker/export.py          ──> artifacts/ranker.txt + ranker_meta.json
 ```
 
 **Discipline**: `eval_test` pool KHÔNG upload Drive (test ngoài tuning loop by construction).
@@ -80,13 +85,20 @@ bị ép mal_score/scored_by/members/favorites/popularity/rank → impute-as-mis
 (anime mới lúc serve chưa có stats trưởng thành). Content/episodes/recency giữ (metadata công
 bố từ đầu). Lưu ý: số val_cold vì thế KHÔNG so được với ranker cũ (cũ leak stats tương lai).
 
+**Importance thực đo (gain, winner)**: pool_rank 124k ≫ hist_cos_max 80k ≫ log_scored_by 17k
+> u_n_rated 15k > mal_score 14k > hist_cos_top5_mean 11k; **cos_uv thô chỉ 2.4k** — model dùng
+*thứ hạng* cosine (pool_rank, chuẩn hoá per-user) thay giá trị thô. 2 feature mới đứng top
+(pool_rank #1, hist_cos_top5_mean #6); support_len/score_gap đóng góp vừa (4.3k/2.1k). Bảng
+đầy đủ + cách đọc: `docs/RESULTS.md §8`; số gốc: `ranker_meta.json::feature_importance_gain`.
+
 ## 6. Eval protocol (= retriever, qua artifacts)
 
 - mask = `seen − query`; metrics mean-per-user recall@K / ndcg@K (binary relevance,
   IDCG = min(R_total, K)); R_total = tổng query kể cả ngoài pool → recall@K trong pool-D
   ≡ full ranking khi K ≤ D.
 - Pool lưu depth 500 → ablation K∈{200,500} (`eval.py --k 500`) không cần re-encode;
-  serve mặc định K=200 (trần r@200 .6505; K=500 nâng trần lên .8147 đổi lấy latency).
+  serve mặc định K=200 (trần r@200 trong pool: val .6505 / test .6524 — `ranker_meta.json::pool_ceiling`;
+  K=500 nâng trần val lên .8147 đổi lấy latency).
 - **Sanity gate** (`eval.py --baseline-only`, tự chạy đầu mọi lần eval): cosine baseline phải
   khớp `artifacts/eval_reference.json` (số test_export đo QUA artifacts, hơi thấp hơn số
   checkpoint trong CONTRACT do row H encode OOV) trong 2e-3. Fail = dừng.
@@ -95,25 +107,58 @@ bố từ đầu). Lưu ý: số val_cold vì thế KHÔNG so được với ran
 - val_cold: rerank pool cold của val (debug, được phép). test warm: report sau khi chốt
   winner. test_cold: final exam.
 
-## 7. Trạng thái & số liệu (2026-06-11 — baseline local, CHƯA có run Colab thật)
+## 7. Kết quả CHỐT (2026-06-11 — Colab runs, full 100k user)
 
-Cosine baseline (two-stage pool, khớp eval_reference): val ndcg@10 **.5207** / r@10 .1526;
-test .5155 / .1516; val_cold ndcg@10 .1572 / r@10 .0767. Pool ceiling r@200: val .6505.
+Production: **`xendcg_lr05_l63` (rank_xendcg, lr .05, 63 leaves), α=1.0, K=200** —
+Pareto-dominate cosine cả 4 metric selection. Đã export `artifacts/ranker.txt` + meta.
 
-| run (val, α best) | ndcg@10 | r@10 | ghi chú |
-|---|---|---|---|
-| cosine | .5207 | .1526 | baseline |
-| linear (full data, local) | .6154 @ α=.5 | .1773 | bar tối thiểu cho GBDT |
-| smoke GBDT (3k user, 50 round) | .6530 @ α=1 | .1905 | placeholder — Colab sweep sẽ thay |
-| smoke NN (2k group, 1 epoch) | .6354 @ α=1 | — | placeholder |
+**Val (two-stage pool 200, 14,029 users) — α best mỗi model:**
 
-⚠ **Cold regress ở α=1**: smoke GBDT val_cold ndcg@10 .1572 → .0239 (model học popularity
-mà cold không có + cold bị loại khỏi train pool). Quyết định khi có run thật, các phương án:
-(a) chọn α thấp hơn nếu warm chịu được; (b) serve rule "candidate cold giữ điểm cosine"
-(bypass blend); (c) chấp nhận (cold đã có kênh riêng từ retriever). Đo rồi quyết, không đoán.
+| run | ndcg@10 | r@10 | r@100 | ndcg@100 |
+|---|---|---|---|---|
+| cosine (baseline) | .5207 | .1526 | .5146 | .4820 |
+| linear (local) | .6161 @ α=.5 | .1773 | .5485 | .5359 |
+| nn_din (Colab GPU) | .6923 @ α=1 | .2074 | .5758 | .5838 |
+| **xendcg_lr05_l63 ★** | **.7103 @ α=1** | **.2147** | **.5801** | **.5937** |
 
-`artifacts/ranker.txt` hiện = smoke placeholder (flow export đã verify). Export thật sau
-khi Colab sweep xong.
+**Test (chấm 1 lần sau khi chốt trên val):** ndcg@10 .5155 → **.7074** (+.1919),
+r@10 .1516 → **.2137** (+.0621), r@100 .5160 → .5811, ndcg@100 .4789 → .5917.
+→ Two-stage giờ **vượt bar MF ALS** (ndcg@10 .6771) ở head precision; r@200 vẫn kẹt trần
+pool .6524 (test) — việc của retriever, không phải ranker.
+
+Đọc bảng: GBDT > NN (−.018) > linear (−.094) > cosine — GBDT là lựa chọn đúng, NN không
+đáng phức tạp hoá serving. α=1 thắng tuyệt đối trên warm (khác ranker cũ cần α=.5):
+candidate pool-matched + label graded cho model đủ tin để override hẳn cosine. Sweep α
+per-model (GBDT/NN đơn điệu tăng theo α; linear đỉnh α=.5 rồi tụt — cần cosine làm sàn):
+`ranker/models/<run>/results.txt`, bảng gộp `docs/RESULTS.md §5`.
+
+**Cấu hình từng model** (code: `src/train_lgbm.py`, `src/train_nn.py`, `baselines/baseline_linear.py`):
+- **GBDT (winner)**: LightGBM `rank_xendcg`, lr .05, 63 leaves, min_data_in_leaf 100,
+  feature/bagging_fraction .8, num_boost_round 4000 + early_stopping(100) trên ndcg nội bộ
+  của `pools/eval_val` (CHỈ để early-stop — số chính thức luôn là two-stage `metrics.py`).
+  Best iteration 1747, train ~6.4k giây Colab. Sweep Colab các trục objective
+  (lambdarank+truncation / xendcg) × lr × leaves — leaderboard `ranker_runs.csv` (Drive),
+  local chỉ giữ winner.
+- **NN DIN (comparator GPU)**: per candidate concat [V, U, U⊙V, 24 numeric z-scored (NaN→mean),
+  5 cat emb dim 4, DIN-attention trên `hist_top64` (query = V, scaled dot)] → MLP 512→256→1;
+  loss listwise softmax-CE trọng số gain `2^grade−1`; AdamW lr 1e-3, batch 32 group, 2 epoch,
+  early-stop theo two-stage val ndcg@10 @ best α (eval mỗi 400 step). 6.212 steps / ~200s GPU.
+- **Linear (sàn)**: logistic regression trên 24 numeric z-scored (bỏ 5 categorical), label
+  binary `grade > 0`, sample 2M row, ~10s CPU. GBDT phải thắng nó mới chứng minh được giá trị
+  của cây + categorical + tương tác.
+
+**Cold — quyết định: TÁCH KÊNH PHỤC VỤ** (mode `separate_channel_cosine` trong
+`ranker_meta.json::cold_serving`). 3 phương án đều ĐO trên val_cold trước khi quyết:
+- ① *(loại)* Cold đi qua blend α=1 cùng warm: val_cold ndcg@10 .1572 → **.0008** —
+  model học suppress item thiếu stats (đúng logic warm vì cold không bao giờ là đáp án
+  warm) → giết kênh cold.
+- ② *(loại)* In-list bypass (item cold giữ rank_norm(cos), warm theo pred): cold cứu về
+  .1163 nhưng warm tụt .7103 → .6434 (cold chiếm 12.5% pool warm) — thoả hiệp cả hai phía.
+- ③ **(CHỐT) Tách kênh**: main list = rerank α=1 trên candidate **warm-only** (lọc
+  `is_cold` trước rerank → warm giữ nguyên .7103); item cold phục vụ **section riêng**
+  xếp theo cosine retriever (giữ nguyên .1572 — lợi thế cấu trúc two-tower). Zero regress
+  cả hai phía; mỗi stage làm đúng việc của nó; service hiển thị 2 khối ("Gợi ý cho bạn"
+  + "Anime mới cho bạn").
 
 ## 8. ranker_meta.json (schema cho service)
 
@@ -122,18 +167,21 @@ khi Colab sweep xong.
 `feature_importance_gain`, `val/test/val_cold metrics + baselines`, `pool_ceiling`,
 `train_provenance` (n_groups/rows/k_pool/seed/git_rev/source_checkpoint), `generated`.
 
-Service: dựng U (user_encode.py) → top-K từ item_vectors → tính 29 feature ĐÚNG thứ tự
-(`features.py` + `pool.cross_features`) → booster.predict → blend α → sort.
+Service (khớp `cold_serving` trong meta): dựng U (user_encode.py) → top-K cosine từ
+item_vectors (mask seen) → **tách warm/cold theo `is_cold`** → warm: tính 29 feature ĐÚNG
+thứ tự (`features.py` + `pool.cross_features`) → booster.predict → blend α (α=1 → sort
+thẳng theo pred) → main list; cold: section riêng sort theo cosine. Tham chiếu:
+`service/backend/recommend.py`.
 
 ## 9. Retrain loop (khi best.pt retriever đổi)
 
 ```bash
 venv/bin/python retriever/export.py && venv/bin/python retriever/test_export.py
-venv/bin/python ranker/src/build_eval.py            # ~30s
-cd ranker/src && ../../venv/bin/python eval.py --baseline-only   # sanity gate
-venv/bin/python ranker/src/build_train.py           # ~1 phút, in list upload Drive
-# → Colab ranker/train.ipynb (sweep + leaderboard) → tải winner về data/models/ →
-cd ranker/src && ../../venv/bin/python eval.py      # select + test report + val_cold
-cd ranker/src && ../../venv/bin/python export.py && cd ../.. \
+venv/bin/python ranker/data_prep/build_eval.py      # ~30s
+venv/bin/python ranker/eval.py --baseline-only      # sanity gate
+venv/bin/python ranker/data_prep/build_train.py     # ~1 phút, in list upload Drive
+# → Colab ranker/train.ipynb (sweep + leaderboard) → tải winner về ranker/models/<run>/ →
+venv/bin/python ranker/eval.py                      # select + test report + val_cold
+venv/bin/python ranker/export.py \
   && venv/bin/python -m pytest ranker/tests -q
 ```

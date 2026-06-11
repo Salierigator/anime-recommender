@@ -1,6 +1,6 @@
 """Invariants chống leak — chạy trên artifacts + pool/dataset thật (slice nhỏ, nhanh).
 
-Skip nếu chưa build (fresh clone): cần artifacts/ + ranker/data/pools + datasets.
+Skip nếu chưa build (fresh clone): cần artifacts/ + ranker/train-data/pools + datasets.
 """
 import numpy as np
 import polars as pl

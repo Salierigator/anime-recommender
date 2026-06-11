@@ -3,10 +3,10 @@
 Mục đích: định vị giá trị của GBDT — nếu LightGBM không thắng nổi linear thì feature set
 có vấn đề. Label binary (grade > 0), subsample row để fit nhanh (~1 phút CPU).
 
-Output: ranker/data/models/linear.npz (mean/std/coef/features — eval.py đọc trực tiếp)
+Output: ranker/models/linear/model.npz (mean/std/coef/features — eval.py đọc trực tiếp)
         + row.json cùng format leaderboard.
 
-    venv/bin/python ranker/src/baseline_linear.py
+    venv/bin/python ranker/baselines/baseline_linear.py
 """
 from __future__ import annotations
 
@@ -18,9 +18,14 @@ import torch  # noqa: F401  (convention: torch trước mọi lib OpenMP)
 import polars as pl
 from sklearn.linear_model import LogisticRegression
 
-import config
-from features import CAT_COLS, FEATURE_NAMES
-from metrics import load_pool_arrays, sweep_best_alpha
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))   # lib chung ở ../src
+
+import config  # noqa: E402
+from features import CAT_COLS, FEATURE_NAMES  # noqa: E402
+from metrics import load_pool_arrays, sweep_best_alpha  # noqa: E402
 
 NUM_COLS = [f for f in FEATURE_NAMES if f not in CAT_COLS]
 N_SAMPLE = 2_000_000

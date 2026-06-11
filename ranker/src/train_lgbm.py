@@ -1,7 +1,7 @@
 """train_lgbm.py — train LightGBM ranker (Colab notebook import; --smoke local).
 
 Path EXPLICIT (data_dir/out_dir) để chạy y hệt trên Colab (/content/ranker_data) lẫn local
-(ranker/data). Train = datasets/train.parquet (label graded 0-4, group = user, top-200 pool);
+(ranker/train-data). Train = datasets/train.parquet (label graded 0-4, group = user, top-200 pool);
 valid early-stopping = pools/eval_val.parquet slice 200 (label binary — LightGBM ndcg nội bộ
 CHỈ để early-stop; số chính thức = two-stage metrics.py trên eval_val, tính sau mỗi run).
 

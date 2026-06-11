@@ -2,6 +2,8 @@
 
 > Mô tả cách chia data + protocol eval của retriever. Pipeline build chi tiết: `docs/TRAIN_DATA.md`. Model + metrics: `docs/TWO_TOWER_MODEL.md`. Số liệu thực tế: root `PROGRESS.md`.
 
+> ⚠️ Các con số (counts/trần recall) = snapshot prep **2026-06-10** — tất định theo seed 42, chỉ đổi nếu sửa `prep_config.py` và re-run prep. Protocol thì cố định.
+
 ## 1. Bức tranh tổng — 2 trục overlay
 
 Split có **2 trục độc lập chồng lên nhau** (overlay — không tách thêm nhóm user riêng cho cold-item):
@@ -77,6 +79,8 @@ Quan hệ tập hợp (per eval user): `query ⊔ support = positive-warm` (chia
 
 ¹ users có ≥1 warm query (user `n_warm < 2` không có warm query nhưng vẫn có thể có cold query).
 
+Lưu ý quan hệ user giữa các tập: KHÔNG có nhóm user riêng cho cold — 8.388 users của `val_cold` là **subset** của 14.058 val users (những user có ≥1 positive ∈ H), tương tự 8.510 ⊂ 14.267 test users. Một user có thể xuất hiện ở cả slice warm lẫn cold (với 2 tập query khác nhau).
+
 Kỷ luật: không tune trên `test`/`test_cold`. Vòng lặp quyết định chạy trên `val` (warm) + `val_cold` (cold); 2 tập test chỉ để báo cáo.
 
 ## 7. Seen-mask
@@ -88,6 +92,7 @@ mask(user) = seen(user) − query_đang_chấm
 ```
 
 - **Vì sao mask seen**: support history là thứ model vừa được nhìn làm input và (với MF/KNN) được fit trực tiếp — chúng tất yếu chiếm top-K. Lúc serve, service cũng filter toàn bộ list MAL của user trước khi trả kết quả. Không mask (hoặc chỉ mask một phần history) → top-K bị chiếm chỗ bởi item "đã xem" không bao giờ được recommend thật → recall bị đè thấp giả tạo và lệch khỏi serving.
+- **Vì sao seen gồm cả PTW/on_hold/score thấp** (không chỉ positive): serving filter theo TOÀN BỘ list MAL của user — item đã nằm trong list (kể cả plan_to_watch) không bao giờ được recommend lại. Eval mask phải mirror đúng hành vi đó, nếu không số eval lệch khỏi serving.
 - **Vì sao trừ query ra**: query ⊆ seen by construction — mask cả query thì đáp án biến mất, recall = 0.
 - Warm và cold dùng 2 mask khác nhau (khác tập query bị trừ ra).
 

@@ -12,10 +12,10 @@ Per train user (sample N_TRAIN_USERS, n_pos ≥ MIN_POS_TRAIN, RNG per-user dete
 
 Valid cho early-stopping = pools/eval_val.parquet (label binary) — KHÔNG build riêng.
 
-Output: ranker/data/datasets/train.parquet + train_users.parquet + build_meta.json
+Output: ranker/train-data/datasets/train.parquet + train_users.parquet + build_meta.json
         (+ in danh sách file cần upload Drive cho Colab).
 
-    venv/bin/python ranker/src/build_train.py [--n-users 100000] [--smoke]
+    venv/bin/python ranker/data_prep/build_train.py [--n-users 100000] [--smoke]
 """
 from __future__ import annotations
 
@@ -29,11 +29,16 @@ import numpy as np
 import polars as pl
 import torch  # noqa: F401
 
-import config
-from features import ItemFeatures, build_frame
-from pool import (PoolWriter, UsersHistory, account_age_by_user, cross_features,
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))   # lib chung ở ../src
+
+import config  # noqa: E402
+from features import ItemFeatures, build_frame  # noqa: E402
+from pool import (PoolWriter, UsersHistory, account_age_by_user, cross_features,  # noqa: E402
                   encode_users, topk_pool, user_stats_from_support)
-from user_encode import load_user_encoder
+from user_encode import load_user_encoder  # noqa: E402
 
 
 def select_train_users(uh: UsersHistory, n_users: int) -> np.ndarray:
@@ -133,7 +138,7 @@ def main() -> None:
     for f in ["datasets/train.parquet", "datasets/train_users.parquet",
               "datasets/build_meta.json", "pools/eval_val.parquet",
               "pools/eval_val_users.parquet"]:
-        print(f"  - ranker/data/{f}")
+        print(f"  - ranker/train-data/{f}")
     print("  - artifacts/item_vectors.npy")
 
 

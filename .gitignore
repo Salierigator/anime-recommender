@@ -12,6 +12,7 @@ venv/
 # Claude local state + guidance
 .claude/
 CLAUDE.md
+AGENT.md
 PROGRESS.md
 
 # Large data — KHÔNG đẩy GitHub (raw blocked + train-data frozen giữ trên Drive)
@@ -23,11 +24,11 @@ legacy/
 
 # Model output (checkpoint persist trên Drive, không vào repo)
 retriever/checkpoints/
+ranker/models/
 runs/
 
 # Secrets / API keys
 .env
 
-# API test dumps (responses fetched during testing)
-service/backend/api_test_output/
-service/backend/service_test_output/
+# Service cache (JSON fetch + dump recs)
+service/backend/cache/
