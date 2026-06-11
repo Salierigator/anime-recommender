@@ -1,9 +1,10 @@
 """user_encode.py — dựng user-vector U từ artifacts (firewall-clean, DÙNG CHUNG với service).
 
 Replicate đúng encoder user-side của retriever, KHÔNG đụng train-data:
-- history positive = `completed & score∉[1,4]`, top-30 (score desc, tie asc) — build ở build_dataset
-  (khớp data_prep/02,05). Module này nhận sẵn history_ids/scores đã dựng.
-- gender/joined encode theo map nằm trong `user_tower.pt` (khớp data_prep/04).
+- history lấy từ `artifacts/users_history.parquet` (FULL, sort score desc, tie asc — prefix =
+  top-by-score; eval user = support đã trừ query+H). Module này nhận sẵn history_ids/scores.
+- gender/joined encode theo map nằm trong `user_tower.pt` (khớp data_prep/04) —
+  `encode_gender_joined` chỉ cần cho user MỚI lúc serve (user có sẵn dùng users_history).
 - U = UserTower(pool_history(history qua item_vectors), gender, joined), đã L2-norm.
 
 Chỉ ĐỌC `artifacts/` + import ĐỊNH NGHĨA model (UserTower) — không import code train, không train-data.

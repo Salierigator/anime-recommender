@@ -65,6 +65,53 @@ class ArtifactEncoder:
         return self.tower(pooled, batch["gender_id"], batch["joined_bucket"])
 
 
+def validate_ranker_exports(out: Path) -> None:
+    """Invariants các file eval-protocol export cho ranker (eval_queries_* / eval_seen /
+    users_history). Fail = export hỏng hoặc kỷ luật final-exam bị phá."""
+    import polars as pl
+
+    assert not (out / "eval_queries_test_cold.parquet").exists(), (
+        "eval_queries_test_cold.parquet ĐANG TỒN TẠI — final exam chỉ chấm 1 lần lúc chốt "
+        "pipeline; rerun `retriever/export.py` (không --final-exam) để xoá.")
+
+    uh = pl.read_parquet(out / "users_history.parquet")
+    usplit = pl.read_parquet(out / "user_split.parquet")
+    assert uh.height == usplit.height and set(uh["user_idx"]) == set(usplit["user_idx"]), \
+        "users_history phải phủ đúng mọi user trong user_split"
+
+    seen_t = pl.read_parquet(out / "eval_seen.parquet")
+    seen = {int(u): set(s) for u, s in zip(seen_t["user_idx"], seen_t["seen_ids"].to_list())}
+    item_idx = pl.read_parquet(out / "item_index.parquet")
+    is_cold = item_idx["is_cold"].to_numpy()
+
+    for split in ("val", "test", "val_cold"):
+        q = pl.read_parquet(out / f"eval_queries_{split}.parquet")
+        src = pl.read_parquet(config.TRAIN_DATA / "examples" / f"split={split}" / "part-0.parquet")
+        assert q.height == src.height, f"eval_queries_{split} rows {q.height} != source {src.height}"
+        qa = q["anime_idx"].to_numpy()
+        if split.endswith("_cold"):
+            assert is_cold[qa].all(), f"eval_queries_{split}: mọi query phải is_cold=True"
+        else:
+            assert not is_cold[qa].any(), f"eval_queries_{split}: query warm không được is_cold"
+        hist = {int(u): set(h) for u, h in
+                uh.filter(pl.col("user_idx").is_in(q["user_idx"].unique().to_list()))
+                  .select("user_idx", "history_ids").iter_rows()}
+        for u, grp in q.group_by("user_idx"):
+            uu, qs = int(u[0]), set(grp["anime_idx"].to_list())
+            assert not (qs & hist.get(uu, set())), f"{split}: query ∩ history ≠ ∅ (user {uu})"
+            assert qs <= seen.get(uu, set()), f"{split}: query ⊄ seen (user {uu})"
+        print(f"[ok  ] eval_queries_{split}: {q.height:,} rows — query∩history=∅, query⊆seen, "
+              f"is_cold {'all' if split.endswith('_cold') else 'none'}")
+
+    # history sort (score desc) — check sample
+    sample = uh.head(2000)
+    for sc in sample["history_scores"].to_list():
+        if sc:
+            a = np.asarray(sc)
+            assert (a[:-1] >= a[1:]).all(), "users_history: history_scores phải sort desc"
+    print(f"[ok  ] users_history: {uh.height:,} users, history sort score desc (sample 2k)")
+
+
 def fmt(m: dict, ks) -> str:
     cols = " ".join(f"r@{k}={m[f'recall@{k}']:.4f}" for k in ks)
     nd = " ".join(f"ndcg@{k}={m[f'ndcg@{k}']:.4f}" for k in (10, 200))
@@ -77,6 +124,8 @@ def main():
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
+    validate_ranker_exports(args.out)
+
     ks = [10, 50, 100, 200, 500]
     spec = load_feature_spec(config.TRAIN_DATA)
     users = UserTable(config.TRAIN_DATA, spec["hard_neg_cap"])
@@ -86,15 +135,24 @@ def main():
 
     print(f"Eval bằng artifacts ({args.out}) — encoder từ user_tower.pt + item_vectors.npy "
           f"(history cap {cap})\n")
+    reference = {}
     for split in ("val", "test"):
         q_warm, m_warm, q_cold, m_cold = load_eval_protocol(config.TRAIN_DATA, split)
         m = evaluate(enc, users, q_warm, logq, ks, m_warm, eval_history_cap=cap)
         print(f"[{split:4s} warm] {fmt(m, ks)}")
+        reference[f"{split}_warm"] = m
         if split == "val":  # cold chỉ chấm val — test_cold là final exam
             mc = evaluate(enc, users, q_cold, logq, ks, m_cold, eval_history_cap=cap, pooled=True)
             print(f"[val  cold] {fmt(mc, ks)}")
             print("            hitrate " + " ".join(f"@{k}={mc[f'hitrate@{k}']:.4f}" for k in ks)
                   + f"  (n_pairs={mc['n_pairs']:,})")
+            reference["val_cold"] = mc
+
+    # Số reference cho sanity gate của ranker (cosine-baseline two-stage phải tái lập ~1e-3):
+    # đây là số đo QUA ARTIFACTS (row H = OOV) — hơi lệch số checkpoint trong CONTRACT.
+    import json
+    (args.out / "eval_reference.json").write_text(json.dumps(reference, indent=2))
+    print(f"\n[ok  ] eval_reference.json ghi vào {args.out} (reference cho ranker sanity gate)")
 
     ckpt_path = config.ROOT / "checkpoints" / "best.pt"
     if ckpt_path.exists():
