@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+.pytest_cache/
 
 # venv
 venv/
@@ -14,6 +15,7 @@ venv/
 CLAUDE.md
 AGENT.md
 PROGRESS.md
+service/API_CONTRACT.md
 
 # Large data — KHÔNG đẩy GitHub (raw blocked + train-data frozen giữ trên Drive)
 data/
@@ -32,3 +34,9 @@ runs/
 
 # Service cache (JSON fetch + dump recs)
 service/backend/cache/
+
+# Frontend (Node/Vite) — deps + build output, KHÔNG vào repo
+service/frontend/node_modules/
+service/frontend/dist/
+service/frontend/.vite/
+service/frontend/*.local

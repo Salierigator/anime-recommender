@@ -20,7 +20,7 @@ from pathlib import Path
 import requests
 
 # --- config -----------------------------------------------------------------
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"  # service/.env
+ENV_PATH = Path(__file__).resolve().parents[3] / ".env"  # service/.env (app/clients/ → service/)
 MAL_BASE = "https://api.myanimelist.net/v2"
 JIKAN_BASE = "https://api.jikan.moe/v4"
 TIMEOUT = 30
