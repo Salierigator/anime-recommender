@@ -12,3 +12,4 @@ implicit
 lightgbm
 requests
 pytest
+sentence-transformers   # offline synopsis embedding (retriever/data_prep/07_synopsis_emb.py)

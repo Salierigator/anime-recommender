@@ -20,6 +20,7 @@ Ghi (contract docs/PROJECT_STRUCTURE.md §4):
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -57,9 +58,19 @@ def reconcile_spec_to_ckpt(spec: dict, sd: dict) -> list[tuple[str, int, int]]:
     return fixes
 
 
+def _cfg_with_defaults(saved_cfg) -> config.TwoTowerConfig:
+    """ckpt cũ pickle theo class TwoTowerConfig TRƯỚC khi thêm field (synopsis/optimizer/...).
+    Rebuild điền default cho field thiếu (như _cfg_from_ckpt ở notebook) -> TwoTower đọc
+    cfg.synopsis_*/optimizer không vỡ với best.pt cũ."""
+    base = config.TwoTowerConfig()
+    kw = {f.name: getattr(saved_cfg, f.name, getattr(base, f.name))
+          for f in dataclasses.fields(config.TwoTowerConfig)}
+    return config.TwoTowerConfig(**kw)
+
+
 def build_model(ckpt: dict, device: str) -> tuple[TwoTower, dict]:
     """Dựng TwoTower từ cfg đã pickle, override path/device về local, load weights."""
-    cfg = ckpt["cfg"]
+    cfg = _cfg_with_defaults(ckpt["cfg"])
     cfg.train_data = config.TRAIN_DATA      # cfg pickle từ Colab mang path Colab -> ép local
     cfg.device = device
     spec = load_feature_spec(cfg.train_data)
@@ -69,7 +80,8 @@ def build_model(ckpt: dict, device: str) -> tuple[TwoTower, dict]:
         for label, spec_v, ck_v in fixes:
             print(f"  - {label}: spec vocab={spec_v} -> dùng checkpoint vocab={ck_v}")
         print("  Item vectors KHÔNG ảnh hưởng; chỉ user-side. Cân nhắc retrain/regenerate train-data.")
-    item_table = ItemTable(cfg.train_data).to(device)
+    item_table = ItemTable(cfg.train_data, cfg.synopsis_emb_file,
+                           cfg.synopsis_low_info_file).to(device)
     model = TwoTower(spec, cfg, item_table).to(device)
     model.load_state_dict(ckpt["model"])
     model.eval()

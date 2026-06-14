@@ -12,6 +12,7 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 |---|---|---|
 | **Retriever full-catalog, serve-path** (warm val/test + cold val) — số CHÍNH thức để báo cáo | `artifacts/eval_reference.json` | do `retriever/test_export.py` đo QUA artifacts (row H→OOV) |
 | Retriever theo checkpoint — so run-vs-run khi tune | bảng v5 trong `PROGRESS.md` + leaderboard `runs.csv` (Drive) + `artifacts/CONTRACT.md` (val của best.pt) | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
+| **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv` + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
 | Baselines retriever (TEST warm + cold) | `retriever/baselines/*.txt` | phương pháp: `docs/BASELINES.md` |
 | Ranker per-model: **sweep α** + val + cold diagnostic | `ranker/models/<run>/results.txt` (+ `row.json`: hyperparam, train_sec) | CHỈ VAL — kỷ luật giữ test sạch |
 | Ranker leaderboard mọi run Colab | `ranker_runs.csv` (Drive) | ngoài repo |

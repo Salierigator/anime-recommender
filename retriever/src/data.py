@@ -65,7 +65,8 @@ class ItemTable:
         "startyear_bucket", "episodes_bucket",
     ]
 
-    def __init__(self, train_data: Path):
+    def __init__(self, train_data: Path, synopsis_emb_file: str = "synopsis_emb.npy",
+                 synopsis_low_info_file: str = "synopsis_low_info.npy"):
         t = pq.read_table(train_data / "item_features.parquet")
         d = t.to_pydict()
         self.num_items = len(d["anime_idx"])
@@ -80,11 +81,24 @@ class ItemTable:
         max_studios = max((len(x) for x in studio_lists), default=1) or 1
         self.studios = torch.from_numpy(_pad_lists(studio_lists, max_studios)).long()  # [N,S] pad 0
 
+        # synopsis (frozen text-emb, optional): load nếu artifact tồn tại. Thiếu -> không set attr
+        # (ItemTower chỉ dùng khi use_synopsis=True; subset/test không có file vẫn dựng bình thường).
+        emb_path = train_data / synopsis_emb_file
+        if emb_path.exists():
+            self.synopsis_emb = torch.from_numpy(np.load(emb_path)).float()          # [N, raw_dim]
+            self.synopsis_low_info = torch.from_numpy(
+                np.load(train_data / synopsis_low_info_file).astype(bool))            # [N] bool
+            assert len(self.synopsis_emb) == self.num_items, \
+                f"synopsis_emb {len(self.synopsis_emb)} != num_items {self.num_items}"
+
     def to(self, device):
         self.cat = {k: v.to(device) for k, v in self.cat.items()}
         self.genres = self.genres.to(device)
         self.themes = self.themes.to(device)
         self.studios = self.studios.to(device)
+        if hasattr(self, "synopsis_emb"):
+            self.synopsis_emb = self.synopsis_emb.to(device)
+            self.synopsis_low_info = self.synopsis_low_info.to(device)
         return self
 
 
@@ -150,18 +164,34 @@ class ExamplesDataset(Dataset):
     """
 
     def __init__(self, train_data: Path, split: str, subset: int = None,
-                 max_per_user: int = None, seed: int = 42):
+                 max_per_user: int = None, seed: int = 42,
+                 user_frac: float = None, user_frac_seed: int = 12345):
         t = pq.read_table(train_data / "examples" / f"split={split}" / "part-0.parquet")
         self.user_idx = t.column("user_idx").to_numpy()
         self.anime_idx = t.column("anime_idx").to_numpy()
         if subset is not None:
             self.user_idx = self.user_idx[:subset]
             self.anime_idx = self.anime_idx[:subset]
+        if user_frac is not None:
+            self._keep_user_frac(user_frac, user_frac_seed)
         self.max_per_user = max_per_user
         self.seed = seed
         self.active = np.arange(len(self.user_idx))
         if max_per_user is not None:
             self.resample(0)
+
+    def _keep_user_frac(self, frac: float, seed: int):
+        """HP-search: giữ ngẫu nhiên `frac` USER PHÂN BIỆT (tất định theo seed) — random user,
+        KHÔNG phải first-N -> giữ phân phối user/item. Full catalog/logQ/eval không đổi (chỉ lọc
+        example phía train). Lookup-array O(n) vì train ~chục triệu example."""
+        uids = np.unique(self.user_idx)
+        rng = np.random.default_rng(seed)
+        keep_u = uids[rng.random(len(uids)) < frac]
+        keep = np.zeros(int(self.user_idx.max()) + 1, dtype=bool)
+        keep[keep_u] = True
+        m = keep[self.user_idx]
+        self.user_idx = self.user_idx[m]
+        self.anime_idx = self.anime_idx[m]
 
     def resample(self, epoch: int):
         """Rút lại <= max_per_user example mỗi user (vectorized, tất định theo (seed, epoch))."""

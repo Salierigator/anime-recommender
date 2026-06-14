@@ -93,3 +93,48 @@ def test_history_source_grad(make_model):
     g = model2.hist_emb.weight.grad
     assert g is not None and g.abs().sum() > 0, "embed mode: hist_emb phải nhận grad"
     assert g[0].abs().sum() == 0, "padding_idx=0 không được nhận grad"
+
+
+# --- synopsis (content text-emb item-side) ---
+
+def test_synopsis_off_by_default(make_model):
+    model, _, _ = make_model()
+    assert not model.item_tower.use_synopsis, "mặc định use_synopsis=False"
+    assert not hasattr(model.item_tower, "synopsis_proj"), "tắt synopsis -> không tạo projection"
+
+
+def test_synopsis_builds_and_finite(make_model):
+    model, _, _ = make_model(use_synopsis=True, synopsis_dim=12)
+    assert model.item_tower.use_synopsis, "use_synopsis=True phải bật nhánh synopsis"
+    model.eval()
+    with torch.no_grad():
+        v = model.encode_items(torch.tensor([0, 1, 2, 3, 4]))   # gồm PAD/OOV + low-info raw=0
+    assert v.shape == (5, model.d)
+    assert torch.isfinite(v).all(), "encode_items + synopsis phải finite (kể cả row zero/low-info)"
+
+
+def test_synopsis_proj_affects_only_nonlowinfo(make_model):
+    """Perturb projection -> đổi row có synopsis thật (idx 3); row low-info (idx 4) dùng
+    no_synopsis nên KHÔNG đổi. Đối xứng test studios empty-vs-pad."""
+    model, _, _ = make_model(use_synopsis=True, synopsis_dim=12)
+    model.eval()
+    real, low = torch.tensor([3]), torch.tensor([4])
+    with torch.no_grad():
+        before_real, before_low = model.encode_items(real).clone(), model.encode_items(low).clone()
+        model.item_tower.synopsis_proj[-1].weight += 5.0
+        after_real, after_low = model.encode_items(real), model.encode_items(low)
+    assert not torch.allclose(before_real, after_real), "row synopsis thật phải đổi khi đổi projection"
+    assert torch.allclose(before_low, after_low), "row low-info dùng no_synopsis, projection không tác động"
+
+
+def test_no_synopsis_param_affects_only_lowinfo(make_model):
+    """Ngược lại: perturb no_synopsis -> đổi row low-info (idx 4); row thật (idx 3) không đổi."""
+    model, _, _ = make_model(use_synopsis=True, synopsis_dim=12)
+    model.eval()
+    real, low = torch.tensor([3]), torch.tensor([4])
+    with torch.no_grad():
+        before_real, before_low = model.encode_items(real).clone(), model.encode_items(low).clone()
+        model.item_tower.no_synopsis += 5.0
+        after_real, after_low = model.encode_items(real), model.encode_items(low)
+    assert not torch.allclose(before_low, after_low), "row low-info phải đổi khi đổi no_synopsis (học được)"
+    assert torch.allclose(before_real, after_real), "row synopsis thật không dùng no_synopsis"

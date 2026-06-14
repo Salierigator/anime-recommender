@@ -52,7 +52,9 @@ class ItemTower(nn.Module):
     ]
 
     def __init__(self, spec: dict, d: int, genres_proj: int, themes_proj: int, hidden: List[int],
-                 num_items: int, id_dim: int, use_item_id: bool):
+                 num_items: int, id_dim: int, use_item_id: bool,
+                 raw_synopsis_dim: int = None, use_synopsis: bool = False, synopsis_dim: int = 48,
+                 synopsis_proj_hidden: List[int] = None, synopsis_normalize: str = "none"):
         super().__init__()
         item = spec["item_features"]
         self.cat_emb = nn.ModuleDict()
@@ -79,6 +81,17 @@ class ItemTower(nn.Module):
         if use_item_id:
             self.id_emb = nn.Embedding(num_items, id_dim, padding_idx=0)
             in_dim += id_dim
+
+        # synopsis (frozen text-emb): chiếu raw_synopsis_dim -> synopsis_dim, concat content path.
+        # Row low-info (NaN/<50 ký tự/placeholder) -> vec no_synopsis HỌC được thay cho projection
+        # (né NaN do normalize vec ~0; PAD/OOV cũng low-info nên không chạm nhánh chiếu).
+        self.use_synopsis = use_synopsis and raw_synopsis_dim is not None
+        self.synopsis_normalize = synopsis_normalize
+        if self.use_synopsis:
+            self.synopsis_proj = _mlp(raw_synopsis_dim, synopsis_proj_hidden or [], synopsis_dim)
+            self.no_synopsis = nn.Parameter(torch.zeros(synopsis_dim))
+            nn.init.normal_(self.no_synopsis, std=0.02)
+            in_dim += synopsis_dim
         self.mlp = _mlp(in_dim, hidden, d)
 
     def forward(self, items: "ItemBatch", id_idx: torch.Tensor) -> torch.Tensor:
@@ -94,6 +107,13 @@ class ItemTower(nn.Module):
         empty = ~st_mask.any(dim=-1)                            # [*] row toàn 0 = item rỗng
         st_mask[..., 0] = st_mask[..., 0] | empty               # empty -> dùng emb[0]
         parts.append(_masked_mean(st_vec, st_mask))
+        if self.use_synopsis:
+            raw = items.synopsis
+            if self.synopsis_normalize == "l2":
+                raw = F.normalize(raw, dim=-1)                  # 'none' = artifact đã L2 sẵn (mặc định)
+            proj = self.synopsis_proj(raw)
+            low = items.synopsis_low_info.unsqueeze(-1)         # [*,1] -> broadcast
+            parts.append(torch.where(low, self.no_synopsis, proj))
         if self.use_item_id:
             parts.append(self.id_emb(id_idx))                   # id_idx có thể đã dropout->OOV
         x = torch.cat(parts, dim=-1)
@@ -122,11 +142,14 @@ class UserTower(nn.Module):
 class ItemBatch:
     """Gom feature tensor 1 batch anime_idx (gather từ ItemTable) cho ItemTower.forward."""
 
-    def __init__(self, cat: Dict[str, torch.Tensor], genres, themes, studios):
+    def __init__(self, cat: Dict[str, torch.Tensor], genres, themes, studios,
+                 synopsis=None, synopsis_low_info=None):
         self.cat = cat
         self.genres = genres
         self.themes = themes
         self.studios = studios
+        self.synopsis = synopsis                 # [*, raw_dim] hoặc None khi không bật synopsis
+        self.synopsis_low_info = synopsis_low_info  # [*] bool hoặc None
 
 
 class TwoTower(nn.Module):
@@ -136,8 +159,16 @@ class TwoTower(nn.Module):
         self.use_item_id = cfg.use_item_id
         self.id_dropout = cfg.id_dropout
         self.oov_idx = spec["special_idx"]["OOV"]
+        # raw synopsis dim suy từ artifact (ItemTable.synopsis_emb); thiếu artifact -> None -> tắt nhánh
+        raw_syn = getattr(item_table, "synopsis_emb", None)
+        raw_synopsis_dim = raw_syn.shape[1] if (cfg.use_synopsis and raw_syn is not None) else None
+        if cfg.use_synopsis and raw_syn is None:
+            print("WARNING: use_synopsis=True nhưng ItemTable thiếu synopsis_emb (artifact?) -> bỏ qua synopsis")
         self.item_tower = ItemTower(spec, cfg.d, cfg.genres_proj, cfg.themes_proj, cfg.mlp_hidden,
-                                    item_table.num_items, cfg.id_dim, cfg.use_item_id)
+                                    item_table.num_items, cfg.id_dim, cfg.use_item_id,
+                                    raw_synopsis_dim=raw_synopsis_dim, use_synopsis=cfg.use_synopsis,
+                                    synopsis_dim=cfg.synopsis_dim, synopsis_proj_hidden=cfg.synopsis_proj_hidden,
+                                    synopsis_normalize=cfg.synopsis_normalize)
         self.user_tower = UserTower(spec, cfg.d, cfg.mlp_hidden)
         # weighted history pooling theo điểm (score_pool): none|linear|learned.
         # learned: trọng số dương HỌC per mức điểm 0..10 (11 bucket); pad bị mask nên không cần padding_idx.
@@ -163,6 +194,10 @@ class TwoTower(nn.Module):
     def _gather(self, idx: torch.Tensor) -> ItemBatch:
         it = self.item_table
         cat = {col: it.cat[col][idx] for col in it.CAT_COLS}
+        syn = getattr(it, "synopsis_emb", None)
+        if syn is not None:
+            return ItemBatch(cat, it.genres[idx], it.themes[idx], it.studios[idx],
+                             syn[idx], it.synopsis_low_info[idx])
         return ItemBatch(cat, it.genres[idx], it.themes[idx], it.studios[idx])
 
     def encode_items(self, idx: torch.Tensor) -> torch.Tensor:

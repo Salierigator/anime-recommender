@@ -44,6 +44,15 @@ def _make_item_table(num_items=NUM_ITEMS):
     it.studios = torch.tensor([
         [0, 0], [0, 0], [2, 3], [4, 0], [0, 0], [5, 2], [3, 0], [2, 0], [4, 5], [3, 0],
     ]).long()
+    # synopsis synthetic (raw_dim 16): PAD/OOV (0,1) = zero + low_info; row 4 = real low_info
+    # (test nhánh no_synopsis); còn lại có embedding "thật". L2-norm như artifact.
+    it.synopsis_emb = torch.nn.functional.normalize(
+        torch.randn(num_items, 16, generator=g), dim=-1)
+    it.synopsis_emb[0] = 0.0
+    it.synopsis_emb[1] = 0.0
+    low = torch.zeros(num_items, dtype=torch.bool)
+    low[0] = low[1] = low[4] = True
+    it.synopsis_low_info = low
     return it
 
 

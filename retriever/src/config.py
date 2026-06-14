@@ -37,6 +37,14 @@ class TwoTowerConfig:
     history_pool: str = "mean"       # gộp history: 'mean' (±score_pool) | 'attn' (learned-query attention, bỏ qua score_pool)
     history_source: str = "cache"    # nguồn vec phía history: 'cache' (item-vec detach) | 'embed' (bảng Embedding trainable riêng)
 
+    # --- synopsis (content text-emb item-side; frozen artifact + projection trainable) ---
+    use_synopsis: bool = False       # bật nhánh synopsis embedding trong ItemTower
+    synopsis_dim: int = 48           # chiều sau khi chiếu, concat vào content path (~ngang khối genres/themes/studios)
+    synopsis_proj_hidden: List[int] = field(default_factory=list)  # hidden MLP chiếu raw->dim; [] = Linear thuần, [128] nếu underfit
+    synopsis_normalize: str = "none" # chuẩn hoá vec frozen trước khi chiếu: 'none' (artifact đã L2) | 'l2' | 'standardize'
+    synopsis_emb_file: str = "synopsis_emb.npy"            # artifact frozen [num_items, raw_dim] (swap bge/gte qua đây)
+    synopsis_low_info_file: str = "synopsis_low_info.npy"  # bool [num_items]: NaN/<50 ký tự/placeholder -> dùng vec no_synopsis học được
+
     # --- loss ---
     tau: float = 0.07                # temperature
     beta: float = 1.0                # trọng số nhánh hard-neg trong mẫu số
@@ -44,6 +52,7 @@ class TwoTowerConfig:
 
     # --- train ---
     lr: float = 1e-3
+    optimizer: str = "adam"          # 'adam' | 'adamw' (AdamW decouple weight_decay — chỉ khác khi weight_decay>0)
     cosine_lr: bool = False          # True = cosine-anneal LR lr->0 suốt train (thay LR hằng số)
     weight_decay: float = 0.0
     batch_size: int = 4096
@@ -67,6 +76,8 @@ class TwoTowerConfig:
     num_workers: int = 0
     seed: int = 42
     subset: Optional[int] = None     # smoke: chỉ lấy N example train đầu (None = full)
+    train_user_frac: Optional[float] = None  # HP-search: chỉ giữ ngẫu nhiên frac USER cho split=train (giữ full catalog+logQ+eval). None = full
+    subset_seed: int = 12345         # seed lọc user của train_user_frac (tất định, ghi vào row log)
     ckpt_dir: Path = field(default_factory=lambda: ROOT / "checkpoints")
 
     # --- paths (artifacts) ---

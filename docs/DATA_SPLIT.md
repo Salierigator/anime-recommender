@@ -118,3 +118,18 @@ Metric là mean-per-user của `hits@K / R` với R = TOÀN BỘ query của use
 - seen ⊇ history ∪ query của mọi eval user.
 - History sort score desc (tie hash asc) → prefix cap = top-by-score.
 - logQ: H có count train = 0 → floor `max(count,1)` giữ H finite (vẫn là candidate khi rank full catalog).
+
+## 10. Audit phân phối eval (2026-06-14) — val/test có đại diện / bị bias không?
+
+Đo phân phối val/test (warm + cold) so với toàn catalog + train-positive (script aggregate, không dump row). **Kết luận: SẠCH — `val ≈ test` ở MỌI chiều; warm query khớp phân phối train-positive; mọi "lệch" còn lại đều do thiết kế, không phải bias.** → không cần sửa split.
+
+**User-side (hash theo username → độc lập feature):**
+- Size train 262.676 / val 14.058 / test 14.267 (≈90/5/5). `gender_id` + `joined_bucket`: % train ≈ val ≈ test, lệch ≤0.9pp mọi bucket → không bias feature.
+- Activity: support-history p50 = train 172 / val 144 / test 141. Eval thấp hơn KHÔNG phải eval ít active — support = 80% positive (20% giấu làm query); thực ra eligibility `n_pos≥11` loại đuôi user thưa nên **eval user hơi tích cực hơn nền chung** (caveat đã biết: metric nghiêng về active user, ít đại diện user rất thưa). val ≈ test.
+
+**Item-side (warm query khớp train-positive = đại diện cái user THỰC SỰ xem):**
+- `start_year` %: warm_val/test (≈42% 2010-17, ≈39% 2018+) ≈ train-positive freq-weighted (41.6/38.9). Catalog phẳng hơn (28/33) vì popularity ∝ độ mới → train-pos + eval CÙNG nghiêng về mới (đúng hành vi, không phải bias riêng của eval).
+- `type` %: warm_val/test ≈70% TV ≈ train-positive 69.8%. Popularity `logq` warm query p10/p50/p90 ≈ [-10,-7.9,-6.5] cho cả val, test VÀ train-positive — không skew head/tail.
+- Coverage: warm query phủ ~66% catalog warm (≈14.5k/21.7k distinct item), val ≈ test.
+
+**Cold (H = 5% mới nhất — theo thiết kế):** 100% cold query ∈ 2018+, ~89% TV (anime mới đa số TV series) — đúng bản chất "anime mới", không phải anomaly. Coverage: cold_val 833/1.142 (72.9%) H, cold_test 843 (73.8%); val ≈ test.

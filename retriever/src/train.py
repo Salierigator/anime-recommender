@@ -30,7 +30,8 @@ def set_seed(seed: int):
 def build(cfg: cfg_mod.TwoTowerConfig):
     spec = data_mod.load_feature_spec(cfg.train_data)
     logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
-    item_table = data_mod.ItemTable(cfg.train_data).to(cfg.device)
+    item_table = data_mod.ItemTable(cfg.train_data, cfg.synopsis_emb_file,
+                                    cfg.synopsis_low_info_file).to(cfg.device)
     users = data_mod.UserTable(cfg.train_data, spec["hard_neg_cap"])
     model = TwoTower(spec, cfg, item_table).to(cfg.device)
     return spec, logq, item_table, users, model
@@ -41,7 +42,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     spec, logq, item_table, users, model = build(cfg)
 
     train_ds = data_mod.ExamplesDataset(cfg.train_data, "train", subset=cfg.subset,
-                                        max_per_user=cfg.max_examples_per_user, seed=cfg.seed)
+                                        max_per_user=cfg.max_examples_per_user, seed=cfg.seed,
+                                        user_frac=cfg.train_user_frac, user_frac_seed=cfg.subset_seed)
     collate = data_mod.Collate(users, cfg.hist_dropout, cfg.m_hardneg, cfg.train_hist_len)
     loader = DataLoader(
         train_ds, batch_size=cfg.batch_size, shuffle=True,
@@ -57,7 +59,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     queries = metrics_mod.group_examples(eval_ds.user_idx, eval_ds.anime_idx)
     mask_ids = metrics_mod.build_masks(data_mod.load_eval_seen(cfg.train_data), queries)
 
-    opt = torch.optim.Adam(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    opt_cls = torch.optim.AdamW if cfg.optimizer == "adamw" else torch.optim.Adam
+    opt = opt_cls(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * cfg.epochs)
              if cfg.cosine_lr else None)
 
@@ -135,6 +138,9 @@ def main():
     ap.add_argument("--epochs", type=int, default=None)
     ap.add_argument("--batch_size", type=int, default=None)
     ap.add_argument("--device", type=str, default=None)
+    ap.add_argument("--synopsis", action="store_true", help="bật use_synopsis (cần artifact synopsis_emb.npy)")
+    ap.add_argument("--user_frac", type=float, default=None, help="train_user_frac — subset % user cho HP-search")
+    ap.add_argument("--optimizer", type=str, default=None, help="adam|adamw")
     args = ap.parse_args()
 
     cfg = cfg_mod.TwoTowerConfig()
@@ -145,12 +151,19 @@ def main():
         cfg.cache_refresh_steps = 20
         cfg.log_every = 10
         cfg.num_workers = 0
+        cfg.ckpt_dir = cfg.ckpt_dir / "smoke"   # đừng đè best.pt thật (production) bằng model smoke
     if args.epochs is not None:
         cfg.epochs = args.epochs
     if args.batch_size is not None:
         cfg.batch_size = args.batch_size
     if args.device is not None:
         cfg.device = args.device
+    if args.synopsis:
+        cfg.use_synopsis = True
+    if args.user_frac is not None:
+        cfg.train_user_frac = args.user_frac
+    if args.optimizer is not None:
+        cfg.optimizer = args.optimizer
     fit(cfg)
 
 
