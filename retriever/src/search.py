@@ -40,6 +40,8 @@ def canonicalize(overrides: Dict) -> Dict:
         if not ov.get(parent, False):
             for c in children:
                 ov.pop(c, None)
+    if ov.get("history_pool", "mean") != "mean":   # attn bỏ qua score_pool -> drop để khỏi train trùng model dưới 2 tên
+        ov.pop("score_pool", None)
     return ov
 
 

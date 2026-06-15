@@ -15,6 +15,7 @@ venv/
 CLAUDE.md
 AGENT.md
 PROGRESS.md
+REFINE.md
 service/API_CONTRACT.md
 
 # Large data — KHÔNG đẩy GitHub (raw blocked + train-data frozen giữ trên Drive)
