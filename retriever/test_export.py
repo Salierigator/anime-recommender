@@ -21,6 +21,8 @@ from pathlib import Path
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 SRC = Path(__file__).resolve().parent / "src"
 sys.path.insert(0, str(SRC))
@@ -28,27 +30,51 @@ sys.path.insert(0, str(SRC))
 import config  # noqa: E402
 from data import UserTable, load_feature_spec, load_logq  # noqa: E402
 from metrics import evaluate, load_eval_protocol  # noqa: E402
-from model import UserTower, _masked_mean  # noqa: E402
+from model import UserTower, _masked_mean, _masked_weighted_mean  # noqa: E402
 
 
 class ArtifactEncoder:
     """Bắt chước interface model mà metrics.evaluate cần (.item_cache/.encode_users/.eval/.train),
-    nhưng chạy hoàn toàn bằng artifacts. Pool history = masked-mean qua item_vectors (rỗng -> h_empty)."""
+    nhưng chạy hoàn toàn bằng artifacts. Pool history mirror ĐÚNG model.py::TwoTower.pool_history
+    (mean|attn ±score_pool, nguồn vec cache|embed) — PHẢI giữ đồng bộ với
+    ranker/src/user_encode.py::UserEncoder (cả hai phản chiếu cùng logic train)."""
 
     def __init__(self, out: Path, device: str):
         ut = torch.load(out / "user_tower.pt", map_location=device, weights_only=False)
-        if (ut["history_pool"], ut["score_pool"], ut.get("history_source", "cache")) != ("mean", "none", "cache"):
-            raise SystemExit(
-                f"test_export chỉ hỗ trợ history_pool=mean/score_pool=none/history_source=cache "
-                f"(artifact: {ut['history_pool']}/{ut['score_pool']}/{ut.get('history_source')}) "
-                "— mở rộng pooling nếu config đổi.")
+        sd = ut["state_dict"]
         self.eval_history_cap = ut.get("eval_history_cap", 1024)
+        self.d = ut["d"]
+        self.history_pool = ut["history_pool"]
+        self.score_pool = ut["score_pool"]
+        self.history_source = ut.get("history_source", "cache")
         self.item_cache = torch.from_numpy(np.load(out / "item_vectors.npy")).to(device)
+
         self.tower = UserTower({"user_features": ut["user_features"]}, ut["d"], ut["mlp_hidden"]).to(device)
-        self.tower.load_state_dict(
-            {k.replace("user_tower.", ""): v for k, v in ut["state_dict"].items()
-             if k.startswith("user_tower.")})
+        self._load_prefix(self.tower, sd, "user_tower.")
         self.tower.eval()
+
+        self.attn_key = self.attn_query = self.score_weight = self.hist_emb = None
+        if self.history_pool == "attn":
+            self.attn_key = nn.Linear(self.d, self.d, bias=False).to(device)
+            self._load_prefix(self.attn_key, sd, "attn_key.")
+            self.attn_query = sd["attn_query"].to(device)
+        if self.score_pool == "learned":
+            self.score_weight = nn.Embedding(11, 1).to(device)
+            self._load_prefix(self.score_weight, sd, "score_weight.")
+        if self.history_source == "embed":
+            self.hist_emb = nn.Embedding(self.item_cache.shape[0], self.d, padding_idx=0).to(device)
+            self._load_prefix(self.hist_emb, sd, "hist_emb.")
+
+    @staticmethod
+    def _load_prefix(module, sd, prefix):
+        module.load_state_dict({k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)})
+
+    def _attn_pool(self, vecs, mask):
+        logits = (self.attn_key(vecs) @ self.attn_query) / self.d ** 0.5
+        logits = logits.masked_fill(~mask, float("-inf"))
+        logits = logits.masked_fill(~mask.any(dim=-1, keepdim=True), 0.0)
+        attn = torch.softmax(logits, dim=-1)
+        return (attn.unsqueeze(-1) * vecs).sum(dim=-2)
 
     def eval(self):
         return self
@@ -58,9 +84,20 @@ class ArtifactEncoder:
 
     @torch.no_grad()
     def encode_users(self, batch):
-        vecs = self.item_cache[batch["history_ids"]]               # [B, L, d]
-        pooled = _masked_mean(vecs, batch["history_mask"])         # [B, d]
-        empty = ~batch["history_mask"].any(dim=-1)
+        ids, mask = batch["history_ids"], batch["history_mask"]
+        scores = batch.get("history_scores")
+        vecs = self.hist_emb(ids) if self.history_source == "embed" else self.item_cache[ids]  # [B, L, d]
+        if self.history_pool == "attn":
+            pooled = self._attn_pool(vecs, mask)
+        elif self.score_pool == "none" or scores is None:
+            pooled = _masked_mean(vecs, mask)
+        else:
+            if self.score_pool == "learned":
+                w = F.softplus(self.score_weight(scores).squeeze(-1))
+            else:
+                w = scores.to(vecs.dtype).clamp(min=1.0)
+            pooled = _masked_weighted_mean(vecs, mask, w)
+        empty = ~mask.any(dim=-1)
         pooled = torch.where(empty.unsqueeze(-1), self.tower.h_empty, pooled)
         return self.tower(pooled, batch["gender_id"], batch["joined_bucket"])
 

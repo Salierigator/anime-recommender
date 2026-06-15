@@ -41,7 +41,7 @@ class TwoTowerConfig:
     use_synopsis: bool = False       # bật nhánh synopsis embedding trong ItemTower
     synopsis_dim: int = 48           # chiều sau khi chiếu, concat vào content path (~ngang khối genres/themes/studios)
     synopsis_proj_hidden: List[int] = field(default_factory=list)  # hidden MLP chiếu raw->dim; [] = Linear thuần, [128] nếu underfit
-    synopsis_normalize: str = "none" # chuẩn hoá vec frozen trước khi chiếu: 'none' (artifact đã L2) | 'l2' | 'standardize'
+    synopsis_normalize: str = "none" # vec frozen trước chiếu: 'none' (artifact 07 đã L2) | 'l2' (re-norm khi swap artifact CHƯA norm). standardize CHƯA implement (model.py)
     synopsis_emb_file: str = "synopsis_emb.npy"            # artifact frozen [num_items, raw_dim] (swap bge/gte qua đây)
     synopsis_low_info_file: str = "synopsis_low_info.npy"  # bool [num_items]: NaN/<50 ký tự/placeholder -> dùng vec no_synopsis học được
 

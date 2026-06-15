@@ -37,13 +37,18 @@ class UserEncoder(nn.Module):
         self.d = meta["d"]
         self.history_pool = meta["history_pool"]
         self.score_pool = meta["score_pool"]
+        self.history_source = meta.get("history_source", "cache")
         self.user_tower = UserTower({"user_features": meta["user_features"]}, meta["d"], meta["mlp_hidden"])
         if self.history_pool == "attn":
             self.attn_key = nn.Linear(self.d, self.d, bias=False)
             self.attn_query = nn.Parameter(torch.zeros(self.d))
         if self.score_pool == "learned":
             self.score_weight = nn.Embedding(11, 1)
-        # item_cache = item_vectors (row==anime_idx); persistent=False để không lọt vào load_state_dict
+        if self.history_source == "embed":
+            # embed: bảng pool history trainable (export đóng gói key hist_emb.*) — KHÁC item_cache
+            self.hist_emb = nn.Embedding(item_vectors.shape[0], self.d, padding_idx=0)
+        # item_cache = item_vectors (row==anime_idx); persistent=False để không lọt vào load_state_dict.
+        # LUÔN giữ kể cả history_source=embed: còn là bảng scoring toàn catalog (service/ranker dùng).
         self.register_buffer("item_cache", torch.from_numpy(item_vectors).float(), persistent=False)
 
     def _attn_pool(self, vecs: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -54,7 +59,8 @@ class UserEncoder(nn.Module):
         return (attn.unsqueeze(-1) * vecs).sum(dim=-2)
 
     def pool_history(self, history_ids, history_mask, history_scores=None) -> torch.Tensor:
-        vecs = self.item_cache[history_ids]                    # [B, L, d]
+        vecs = (self.hist_emb(history_ids) if self.history_source == "embed"
+                else self.item_cache[history_ids])             # [B, L, d]
         if self.history_pool == "attn":
             pooled = self._attn_pool(vecs, history_mask)
         elif self.score_pool == "none" or history_scores is None:
