@@ -24,6 +24,7 @@ export interface RecommendRequest {
   top_k?: number;
   cold_k?: number;
   live?: boolean;
+  anchor_mal_id?: number | null;
 }
 
 export interface RecommendResponse {

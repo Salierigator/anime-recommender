@@ -61,6 +61,7 @@ def main() -> None:
     ap.add_argument("--mal-ids", type=Path, help="file mal_id (1 id/dòng) thay cho username")
     ap.add_argument("--top-k", type=int, default=20)
     ap.add_argument("--cold-k", type=int, default=10)
+    ap.add_argument("--anchor", type=int, help="mal_id: tìm anime giống X (giữ cá nhân hoá user)")
     ap.add_argument("--live", action="store_true", help="ép fetch API dù username có trong dataset")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--dump", action="store_true", help="dump JSON ra backend/cache/")
@@ -96,9 +97,16 @@ def main() -> None:
         print(f"        hist: {r['title'][:40]:<40} (score {r['score']})")
 
     t1 = time.time()
-    out = rec.recommend(user, top_k=args.top_k, cold_k=args.cold_k)
-    print(f"[infer] {time.time() - t1:.2f}s  (α={rec.alpha}, K={rec.k_retrieve})")
-    print_table(f"Gợi ý cho bạn (rerank LightGBM, top {args.top_k})", out["main"])
+    try:
+        out = rec.recommend(user, top_k=args.top_k, cold_k=args.cold_k,
+                            anchor_mal_id=args.anchor)
+    except KeyError:
+        ap.error(f"--anchor {args.anchor} không có trong corpus")
+    print(f"[infer] {time.time() - t1:.2f}s  (α={rec.alpha}, K={rec.k_retrieve})"
+          + (f"  [anchor mal_id={args.anchor}]" if args.anchor else ""))
+    main_title = (f"Anime giống mal_id {args.anchor} (rerank LightGBM, top {args.top_k})"
+                  if args.anchor else f"Gợi ý cho bạn (rerank LightGBM, top {args.top_k})")
+    print_table(main_title, out["main"])
     print_table(f"Anime mới cho bạn (cold theo retriever, top {args.cold_k})", out["cold"])
 
     if args.dump:

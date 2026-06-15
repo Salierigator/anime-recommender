@@ -122,14 +122,27 @@ class Recommender:
                 "age": np.nan, "split": "-", "source": "mal_ids"}
 
     # ---- end-to-end ----
-    def recommend(self, user: dict, top_k: int = 20, cold_k: int = 10) -> dict:
+    def recommend(self, user: dict, top_k: int = 20, cold_k: int = 10,
+                  anchor_mal_id: int | None = None) -> dict:
         U = encode_users(self.enc, [user["hist_idx"]], [user["hist_score"]],
                          np.asarray([user["gender_id"]]), np.asarray([user["joined_bucket"]]),
                          self.cap)
-        mask = [user["seen"]]
-        # [Gợi ý] warm-only → rerank LightGBM (cold_serving: cold KHÔNG qua ranker)
-        cand, cos = topk_pool(U, self.enc.item_cache, mask, self.k_retrieve,
-                              cold_idx=self.cold_idx)
+        if anchor_mal_id is None:
+            mask = [user["seen"]]
+            cold_query = U
+            # [Gợi ý] warm-only → rerank LightGBM (cold_serving: cold KHÔNG qua ranker)
+            cand, cos = topk_pool(U, self.enc.item_cache, mask, self.k_retrieve,
+                                  cold_idx=self.cold_idx)
+        else:
+            # "giống X": pool theo anchor, nhưng cos_uv tính lại = user-item (ranker đúng phân phối)
+            aidx = self.mal2idx.get(int(anchor_mal_id))
+            if aidx is None:
+                raise KeyError(anchor_mal_id)
+            cold_query = self.enc.item_cache[aidx:aidx + 1]    # [1, d] = vector của X
+            mask = [np.union1d(user["seen"], [aidx])]          # loại chính X
+            cand, _ = topk_pool(cold_query, self.enc.item_cache, mask, self.k_retrieve,
+                                cold_idx=self.cold_idx)
+            cos = (U @ self.enc.item_cache[torch.from_numpy(cand[0])].t()).numpy()  # [1, k]
         stats = user_stats_from_support([user["hist_score"]],
                                         np.asarray([user["age"]], dtype=np.float64))
         cross = cross_features(self.V, self.itemfeat, cand, cos, [user["hist_idx"]], stats)
@@ -144,8 +157,8 @@ class Recommender:
         order = np.argsort(-score)[:top_k]
         main = [self._row(int(cand[0, j]), pred=float(pred[j]), cos=float(cos[0, j]))
                 for j in order]
-        # [Anime mới] cold theo cosine (mask warm + seen)
-        ccand, ccos = topk_pool(U, self.enc.item_cache, mask, cold_k,
+        # [Anime mới] cold theo cosine (mask warm + seen); anchor mode → cold giống X
+        ccand, ccos = topk_pool(cold_query, self.enc.item_cache, mask, cold_k,
                                 cold_idx=self.warm_idx)
         cold = [self._row(int(a), cos=float(c)) for a, c in zip(ccand[0], ccos[0])]
         return {"main": main, "cold": cold}

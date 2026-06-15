@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, Search } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, User, Hash } from 'lucide-react';
 import type { RecommendRequest } from '../types';
 
 interface Props {
@@ -9,6 +9,7 @@ interface Props {
 
 export function SearchForm({ onSubmit, isLoading }: Props) {
   const [username, setUsername] = useState('');
+  const [anchorMalId, setAnchorMalId] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [malIds, setMalIds] = useState('');
   const [topK, setTopK] = useState(20);
@@ -27,39 +28,59 @@ export function SearchForm({ onSubmit, isLoading }: Props) {
       ids = malIds.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
     }
     
+    const parsedAnchor = parseInt(anchorMalId.trim(), 10);
+    
     onSubmit({
       username: username.trim() || null,
       mal_ids: ids && ids.length > 0 ? ids : null,
       top_k: topK,
       cold_k: coldK,
+      anchor_mal_id: !isNaN(parsedAnchor) ? parsedAnchor : null,
     });
   };
 
   return (
     <form onSubmit={handleSubmit} className="w-full max-w-2xl mx-auto space-y-4">
-      {/* Main Search Input */}
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-          <Search className="h-5 w-5 text-gray-400" />
+      {/* Main Search Inputs */}
+      <div className="flex flex-col md:flex-row gap-4">
+        {/* Username Input */}
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <User className="h-5 w-5 text-gray-400" />
+          </div>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter MAL Username..."
+            className="w-full pl-11 pr-4 py-4 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900 focus:border-gray-900 sm:text-lg transition-shadow shadow-sm"
+            disabled={isLoading}
+          />
         </div>
-        <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          placeholder="Enter MAL Username..."
-          className="w-full pl-11 pr-32 py-4 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900 focus:border-gray-900 sm:text-lg transition-shadow shadow-sm"
-          disabled={isLoading}
-        />
-        <div className="absolute inset-y-0 right-0 flex items-center pr-2">
-          <button
-            type="submit"
-            disabled={isLoading || (!username.trim() && !malIds.trim())}
-            className="px-6 py-2 bg-gray-900 text-white font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isLoading ? 'Searching...' : 'Search'}
-          </button>
+
+        {/* Anchor MAL ID Input */}
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+            <Hash className="h-5 w-5 text-gray-400" />
+          </div>
+          <input
+            type="number"
+            value={anchorMalId}
+            onChange={(e) => setAnchorMalId(e.target.value)}
+            placeholder="Similar to Anime (MAL ID)..."
+            className="w-full pl-11 pr-4 py-4 bg-white border border-gray-300 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900 focus:border-gray-900 sm:text-lg transition-shadow shadow-sm"
+            disabled={isLoading}
+          />
         </div>
       </div>
+
+      <button
+        type="submit"
+        disabled={isLoading || (!username.trim() && !malIds.trim())}
+        className="w-full px-6 py-4 bg-gray-900 text-white font-medium hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {isLoading ? 'Searching...' : 'Search'}
+      </button>
 
       {/* Advanced Toggle */}
       <div className="flex justify-end">

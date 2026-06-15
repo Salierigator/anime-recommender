@@ -26,6 +26,7 @@ class RecommendRequest(BaseModel):
     top_k: int = Field(default=20, ge=1, le=100)
     cold_k: int = Field(default=10, ge=0, le=100)
     live: bool = False                 # ép fetch MAL dù username có trong dataset
+    anchor_mal_id: Optional[int] = None  # "tìm anime giống mal_id này" (giữ cá nhân hoá user)
 
     @model_validator(mode="after")
     def _need_user_or_ids(self) -> "RecommendRequest":

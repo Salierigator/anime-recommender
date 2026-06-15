@@ -38,7 +38,14 @@ class RealService(RecommenderService):
                 )
             user = self.rec.user_from_animelist(animelist, profile, req.username)
 
-        out = self.rec.recommend(user, top_k=req.top_k, cold_k=req.cold_k)
+        try:
+            out = self.rec.recommend(user, top_k=req.top_k, cold_k=req.cold_k,
+                                     anchor_mal_id=req.anchor_mal_id)
+        except KeyError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"mal_id {req.anchor_mal_id} không có trong corpus.",
+            )
         return RecommendResponse(
             main=[AnimeItem(**r) for r in out["main"]],
             cold=[AnimeItem(**r) for r in out["cold"]],
