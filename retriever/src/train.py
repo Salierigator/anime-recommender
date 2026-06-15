@@ -68,7 +68,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     headline = f"recall@{cfg.headline_k}"
     history = {"loss_steps": [], "loss_vals": [], "eval_steps": [], "eval_metrics": []}
     # loss_sum/loss_cnt: gom loss (đã log mỗi log_every) để in TB mỗi lần eval rồi reset
-    state = {"best": -1.0, "loss_sum": 0.0, "loss_cnt": 0, "saved_once": False}
+    state = {"best": -1.0, "loss_sum": 0.0, "loss_cnt": 0, "saved_once": False,
+             "since_best": 0, "stop": False}
 
     def do_eval(step, epoch):
         model.refresh_item_cache()                         # cache mới nhất (warm) trước eval
@@ -82,8 +83,9 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
         else:
             loss_str = "loss   —  "                         # baseline random-init: chưa có loss
         rec = "  ".join(f"@{k} {m[f'recall@{k}']:.3f}" for k in cfg.eval_ks)
+        improved = m[headline] > state["best"] + cfg.early_stop_min_delta   # tính TRƯỚC khi cập nhật best
         mark = ""
-        if m[headline] > state["best"]:
+        if m[headline] > state["best"]:                    # vẫn lưu MỌI cải thiện strict -> best.pt = true best
             state["best"] = m[headline]
             ckpt = cfg.ckpt_dir / "best.pt"
             torch.save({"model": model.state_dict(), "cfg": cfg, "metrics": m,
@@ -92,6 +94,13 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
             if not state["saved_once"]:                    # in path checkpoint đúng 1 lần
                 print(f"  (best.pt -> {ckpt})")
                 state["saved_once"] = True
+        if improved:                                       # early-stop: reset/đếm theo cải thiện ĐÁNG KỂ (min_delta)
+            state["since_best"] = 0
+        else:
+            state["since_best"] += 1
+            if cfg.early_stop_patience is not None and state["since_best"] >= cfg.early_stop_patience:
+                state["stop"] = True
+                mark += "  ⏹"
         print(f"  step {step:>7,} │ {loss_str} │ recall {rec} │ "
               f"ndcg@{cfg.eval_ks[-1]} {m[f'ndcg@{cfg.eval_ks[-1]}']:.3f} │ n={int(m['n_users']):,}{mark}")
 
@@ -125,10 +134,17 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
                 state["loss_cnt"] += 1
             if cfg.eval_every_steps > 0 and step > 0 and step % cfg.eval_every_steps == 0:
                 do_eval(step, epoch)
+                if state["stop"]:
+                    break                                  # early-stop giữa epoch
             step += 1
 
+        if state["stop"]:                                  # đã dừng giữa epoch -> bỏ eval cuối epoch (tránh dup)
+            print(f"   └ epoch {epoch} dừng sớm (early-stop) trong {time.time() - t0:.1f}s · best={state['best']:.4f}")
+            break
         do_eval(step, epoch)                               # eval cuối epoch
         print(f"   └ epoch {epoch} xong trong {time.time() - t0:.1f}s")
+        if state["stop"]:                                  # plateau phát hiện ở eval cuối epoch
+            break
     return model, history
 
 
@@ -141,6 +157,7 @@ def main():
     ap.add_argument("--synopsis", action="store_true", help="bật use_synopsis (cần artifact synopsis_emb.npy)")
     ap.add_argument("--user_frac", type=float, default=None, help="train_user_frac — subset % user cho HP-search")
     ap.add_argument("--optimizer", type=str, default=None, help="adam|adamw")
+    ap.add_argument("--early_stop_patience", type=int, default=None, help="dừng nếu headline không cải thiện sau N eval")
     args = ap.parse_args()
 
     cfg = cfg_mod.TwoTowerConfig()
@@ -164,6 +181,8 @@ def main():
         cfg.train_user_frac = args.user_frac
     if args.optimizer is not None:
         cfg.optimizer = args.optimizer
+    if args.early_stop_patience is not None:
+        cfg.early_stop_patience = args.early_stop_patience
     fit(cfg)
 
 
