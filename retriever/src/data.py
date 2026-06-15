@@ -66,7 +66,8 @@ class ItemTable:
     ]
 
     def __init__(self, train_data: Path, synopsis_emb_file: str = "synopsis_emb.npy",
-                 synopsis_low_info_file: str = "synopsis_low_info.npy"):
+                 synopsis_low_info_file: str = "synopsis_low_info.npy",
+                 use_synopsis: bool = False):
         t = pq.read_table(train_data / "item_features.parquet")
         d = t.to_pydict()
         self.num_items = len(d["anime_idx"])
@@ -81,10 +82,10 @@ class ItemTable:
         max_studios = max((len(x) for x in studio_lists), default=1) or 1
         self.studios = torch.from_numpy(_pad_lists(studio_lists, max_studios)).long()  # [N,S] pad 0
 
-        # synopsis (frozen text-emb, optional): load nếu artifact tồn tại. Thiếu -> không set attr
-        # (ItemTower chỉ dùng khi use_synopsis=True; subset/test không có file vẫn dựng bình thường).
+        # synopsis (frozen text-emb, optional): chỉ load khi use_synopsis (ItemTower mới dùng) VÀ
+        # artifact tồn tại. Thiếu file hoặc tắt nhánh -> không set attr (tránh load thừa lên RAM/GPU).
         emb_path = train_data / synopsis_emb_file
-        if emb_path.exists():
+        if use_synopsis and emb_path.exists():
             self.synopsis_emb = torch.from_numpy(np.load(emb_path)).float()          # [N, raw_dim]
             self.synopsis_low_info = torch.from_numpy(
                 np.load(train_data / synopsis_low_info_file).astype(bool))            # [N] bool

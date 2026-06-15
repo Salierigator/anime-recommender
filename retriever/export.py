@@ -81,7 +81,7 @@ def build_model(ckpt: dict, device: str) -> tuple[TwoTower, dict]:
             print(f"  - {label}: spec vocab={spec_v} -> dùng checkpoint vocab={ck_v}")
         print("  Item vectors KHÔNG ảnh hưởng; chỉ user-side. Cân nhắc retrain/regenerate train-data.")
     item_table = ItemTable(cfg.train_data, cfg.synopsis_emb_file,
-                           cfg.synopsis_low_info_file).to(device)
+                           cfg.synopsis_low_info_file, cfg.use_synopsis).to(device)
     model = TwoTower(spec, cfg, item_table).to(device)
     model.load_state_dict(ckpt["model"])
     model.eval()

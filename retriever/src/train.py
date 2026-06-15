@@ -31,7 +31,7 @@ def build(cfg: cfg_mod.TwoTowerConfig):
     spec = data_mod.load_feature_spec(cfg.train_data)
     logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
     item_table = data_mod.ItemTable(cfg.train_data, cfg.synopsis_emb_file,
-                                    cfg.synopsis_low_info_file).to(cfg.device)
+                                    cfg.synopsis_low_info_file, cfg.use_synopsis).to(cfg.device)
     users = data_mod.UserTable(cfg.train_data, spec["hard_neg_cap"])
     model = TwoTower(spec, cfg, item_table).to(cfg.device)
     return spec, logq, item_table, users, model
