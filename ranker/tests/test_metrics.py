@@ -37,6 +37,31 @@ def test_idcg_truncation_min_R_k():
     assert m["recall@2"] == pytest.approx(2 / 5)
 
 
+def test_liked_recall_ndcg_hand_computed():
+    # 1 group, 4 cand score desc -> order [0,1,2,3]; liked = cand0,cand2; r_liked=3 (1 liked ngoài pool)
+    scores = np.array([4.0, 3.0, 2.0, 1.0])
+    labels = np.array([1, 1, 1, 0], dtype=np.int8)
+    label_liked = np.array([1, 0, 1, 0], dtype=np.int8)
+    m = eval_pool(scores, labels, np.array([0, 4]), np.array([3]), ks=[1, 2, 3],
+                  label_liked=label_liked, r_liked=np.array([3]))
+    assert m["n_users_liked"] == 1
+    assert m["liked_recall@1"] == pytest.approx(1 / 3)    # top1=cand0 liked, mẫu = r_liked=3
+    assert m["liked_recall@2"] == pytest.approx(1 / 3)    # top2={0,1}, liked hit {0}
+    assert m["liked_recall@3"] == pytest.approx(2 / 3)    # top3={0,1,2}, liked {0,2}
+    idcg2 = 1 + 1 / np.log2(3)                            # min(r_liked,2)=2 liked đứng đầu
+    assert m["liked_ndcg@2"] == pytest.approx(1.0 / idcg2)  # chỉ cand0 (rank0) liked
+    # binary KHÔNG đổi (cùng ranking)
+    assert m["recall@3"] == pytest.approx(1.0)            # 3 label / r_total=3
+
+
+def test_liked_skips_user_with_no_liked():
+    m = eval_pool(np.array([2.0, 1.0]), np.array([1, 1], dtype=np.int8), np.array([0, 2]),
+                  np.array([2]), ks=[2],
+                  label_liked=np.array([0, 0], dtype=np.int8), r_liked=np.array([0]))
+    assert m["n_users_liked"] == 0
+    assert m["liked_recall@2"] == 0.0                     # n_liked=0 -> mặc định 0
+
+
 def test_pooled_hitrate():
     scores = np.array([2.0, 1.0, 2.0, 1.0])
     labels = np.array([1, 0, 0, 0], dtype=np.int8)

@@ -170,9 +170,12 @@ class ExamplesDataset(Dataset):
         t = pq.read_table(train_data / "examples" / f"split={split}" / "part-0.parquet")
         self.user_idx = t.column("user_idx").to_numpy()
         self.anime_idx = t.column("anime_idx").to_numpy()
+        # score query item (held-out) — CHỈ dùng cho liked-metric lúc eval, KHÔNG vào train
+        self.score = t.column("score").to_numpy().astype(np.int64)
         if subset is not None:
             self.user_idx = self.user_idx[:subset]
             self.anime_idx = self.anime_idx[:subset]
+            self.score = self.score[:subset]
         if user_frac is not None:
             self._keep_user_frac(user_frac, user_frac_seed)
         self.max_per_user = max_per_user
@@ -193,6 +196,7 @@ class ExamplesDataset(Dataset):
         m = keep[self.user_idx]
         self.user_idx = self.user_idx[m]
         self.anime_idx = self.anime_idx[m]
+        self.score = self.score[m]
 
     def resample(self, epoch: int):
         """Rút lại <= max_per_user example mỗi user (vectorized, tất định theo (seed, epoch))."""

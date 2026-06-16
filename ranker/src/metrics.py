@@ -41,10 +41,17 @@ def blend(cos: np.ndarray, pred: np.ndarray, offsets: np.ndarray, alpha: float) 
 
 
 def eval_pool(scores: np.ndarray, labels: np.ndarray, offsets: np.ndarray,
-              r_total: np.ndarray, ks, pooled: bool = False) -> dict:
+              r_total: np.ndarray, ks, pooled: bool = False,
+              label_liked: np.ndarray = None, r_liked: np.ndarray = None) -> dict:
     """Rerank từng group theo scores desc rồi đo recall@K/ndcg@K mean-per-user (labels binary
     0/1 = candidate ∈ query). pooled=True: thêm hitrate@K pooled trên mọi (user,query) pairs
-    (cho slice cold mỏng). Trả {recall@K, ndcg@K, n_users[, hitrate@K, n_pairs]}."""
+    (cho slice cold mỏng).
+
+    label_liked (per-candidate 0/1 = candidate ∈ liked-query) + r_liked (per-user #liked query,
+    cả ngoài pool): khi có -> thêm liked_recall@K / liked_ndcg@K (report-only) trên CÙNG ranking,
+    chỉ user r_liked>0 (n_users_liked). liked = score>=1 & score>u_mean (dựng ở build_eval).
+
+    Trả {recall@K, ndcg@K, n_users[, hitrate@K, n_pairs][, liked_recall@K, liked_ndcg@K, n_users_liked]}."""
     G = len(offsets) - 1
     kmax = max(ks)
     discount = 1.0 / np.log2(np.arange(2, kmax + 2))
@@ -55,6 +62,11 @@ def eval_pool(scores: np.ndarray, labels: np.ndarray, offsets: np.ndarray,
     pooled_hits = {k: 0.0 for k in ks}
     n = 0
     total_rel = 0
+
+    liked_on = label_liked is not None and r_liked is not None
+    sums_liked = {f"liked_recall@{k}": 0.0 for k in ks}
+    sums_liked.update({f"liked_ndcg@{k}": 0.0 for k in ks})
+    n_liked = 0
     for g in range(G):
         s, e = offsets[g], offsets[g + 1]
         R = int(r_total[g])
@@ -73,12 +85,26 @@ def eval_pool(scores: np.ndarray, labels: np.ndarray, offsets: np.ndarray,
         total_rel += R
         n += 1
 
+        if liked_on:
+            RL = int(r_liked[g])
+            if RL:
+                hit_l = label_liked[s:e][order].astype(np.float64)
+                for k in ks:
+                    hl = hit_l[:k]
+                    sums_liked[f"liked_recall@{k}"] += hl.sum() / RL
+                    sums_liked[f"liked_ndcg@{k}"] += (hl * discount[: len(hl)][:k]).sum() \
+                        / idcg_cum[min(RL, k) - 1]
+                n_liked += 1
+
     out = {m: (v / n if n else 0.0) for m, v in sums.items()}
     out["n_users"] = n
     if pooled:
         for k in ks:
             out[f"hitrate@{k}"] = pooled_hits[k] / total_rel if total_rel else 0.0
         out["n_pairs"] = total_rel
+    if liked_on:
+        out.update({m: (v / n_liked if n_liked else 0.0) for m, v in sums_liked.items()})
+        out["n_users_liked"] = n_liked
     return out
 
 

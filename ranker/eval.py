@@ -35,11 +35,20 @@ from features import FEATURE_NAMES  # noqa: E402
 from metrics import blend, eval_pool, fmt  # noqa: E402
 
 SEL_METRICS = ["recall@10", "recall@100", "ndcg@10", "ndcg@100"]
+# report-only (KHÔNG dùng cho selection — kỷ luật binary): "chất lượng" đầu list (REFINE §3-4)
+LIKED_METRICS = ["liked_recall@100", "liked_recall@200", "liked_ndcg@10"]
 
 
 def run_label(p: Path) -> str:
     """models/<run_name>/model.txt -> run_name (trainer ghi theo run subdir)."""
     return p.parent.name if p.stem == "model" else p.stem
+
+
+def liked_arrays(df, users):
+    """label_liked (per-candidate) + r_liked (per-user) từ pool đã load (None nếu pool cũ thiếu cột)."""
+    if "label_liked" not in df.columns or "r_liked" not in users.columns:
+        return None, None
+    return df["label_liked"].to_numpy().astype(np.int8), users["r_liked"].to_numpy()
 
 
 def load_pool(split: str, k: int):
@@ -68,9 +77,10 @@ def predict(model_path: Path, df: pl.DataFrame, users: pl.DataFrame) -> np.ndarr
     raise SystemExit(f"model không nhận dạng được: {model_path}")
 
 
-def sweep(cos, pred, labels, offsets, r_total, ks, alphas):
+def sweep(cos, pred, labels, offsets, r_total, ks, alphas, label_liked=None, r_liked=None):
     """{alpha: metrics} cho 1 model. alpha=0 = cosine baseline."""
-    return {a: eval_pool(blend(cos, pred, offsets, a), labels, offsets, r_total, ks)
+    return {a: eval_pool(blend(cos, pred, offsets, a), labels, offsets, r_total, ks,
+                         pooled=False, label_liked=label_liked, r_liked=r_liked)
             for a in alphas}
 
 
@@ -95,9 +105,14 @@ def baseline_gate() -> None:
         if not (config.POOLS / f"eval_{split}.parquet").exists():
             print(f"[skip] eval_{split} chưa build")
             continue
-        _, cos, labels, offsets, r_total, _ = load_pool(split, config.POOL_DEPTH)
-        m = eval_pool(cos, labels, offsets, r_total, ks_full, pooled=split.endswith("cold"))
+        df, cos, labels, offsets, r_total, users = load_pool(split, config.POOL_DEPTH)
+        ll, rl = liked_arrays(df, users)
+        m = eval_pool(cos, labels, offsets, r_total, ks_full, pooled=split.endswith("cold"),
+                      label_liked=ll, r_liked=rl)
         print(f"[{split:8s}] {fmt(m, ks_full)}")
+        if "n_users_liked" in m:
+            print(f"           liked: " + "  ".join(f"{x}={m[x]:.4f}" for x in LIKED_METRICS)
+                  + f"  (n_liked={m['n_users_liked']:,})")
         for k in ks_full:
             d = abs(m[f"recall@{k}"] - ref[key][f"recall@{k}"])
             if d > 2e-3:
@@ -113,19 +128,23 @@ def baseline_gate() -> None:
 
 def report_split(split: str, k: int, models: list[Path], alphas, ks):
     df, cos, labels, offsets, r_total, users = load_pool(split, k)
-    base = eval_pool(cos, labels, offsets, r_total, ks, pooled=split.endswith("cold"))
-    print(f"\n=== {split} (K={k}, n={base['n_users']:,}) ===")
-    print(f"  {'config':<28}" + "".join(f"{m:>12}" for m in SEL_METRICS))
-    print(f"  {'cosine(baseline)':<28}" + "".join(f"{base[m]:>12.4f}" for m in SEL_METRICS))
+    ll, rl = liked_arrays(df, users)
+    base = eval_pool(cos, labels, offsets, r_total, ks, pooled=split.endswith("cold"),
+                     label_liked=ll, r_liked=rl)
+    cols = SEL_METRICS + (LIKED_METRICS if "n_users_liked" in base else [])
+    print(f"\n=== {split} (K={k}, n={base['n_users']:,}"
+          + (f", n_liked={base['n_users_liked']:,}" if "n_users_liked" in base else "") + ") ===")
+    print(f"  {'config':<28}" + "".join(f"{m:>16}" for m in cols))
+    print(f"  {'cosine(baseline)':<28}" + "".join(f"{base[m]:>16.4f}" for m in cols))
     results = {}
     for mp in models:
         pred = predict(mp, df, users)
-        for a, m in sweep(cos, pred, labels, offsets, r_total, ks, alphas).items():
+        for a, m in sweep(cos, pred, labels, offsets, r_total, ks, alphas, ll, rl).items():
             if a == 0.0:
                 continue
             results[(run_label(mp), a)] = m
             print(f"  {f'{run_label(mp)}|a{a}':<28}"
-                  + "".join(f"{m[x]:>12.4f}" for x in SEL_METRICS))
+                  + "".join(f"{m[x]:>16.4f}" for x in cols))
     return base, results
 
 
@@ -166,8 +185,9 @@ def main() -> None:
     chosen = next(m for m in models if run_label(m) == model_name)
     base_test, test_res = report_split("test", args.k, [chosen], [alpha], config.KS)
     test_m = test_res[(model_name, alpha)]
+    sel_cols = SEL_METRICS + ([m for m in LIKED_METRICS if m in test_m])
     print("    test Δ vs cosine: " + "  ".join(
-        f"{m}={test_m[m]:.4f}({test_m[m] - base_test[m]:+.4f})" for m in SEL_METRICS))
+        f"{m}={test_m[m]:.4f}({test_m[m] - base_test[m]:+.4f})" for m in sel_cols))
 
     base_cold, cold_res = report_split("val_cold", args.k, [chosen], [alpha], config.KS)
     cold_m = cold_res[(model_name, alpha)]
@@ -203,10 +223,12 @@ def run_final_exam() -> None:
                                account_age_by_user())
     k, alpha = sel["k_retrieve"], sel["blend_alpha"]
     df, cos, labels, offsets, r_total, users = load_pool("test_cold", k)
-    base = eval_pool(cos, labels, offsets, r_total, config.KS, pooled=True)
+    ll, rl = liked_arrays(df, users)
+    base = eval_pool(cos, labels, offsets, r_total, config.KS, pooled=True,
+                     label_liked=ll, r_liked=rl)
     pred = predict(Path(sel["model"]), df, users)
     m = eval_pool(blend(cos, pred, offsets, alpha), labels, offsets, r_total,
-                  config.KS, pooled=True)
+                  config.KS, pooled=True, label_liked=ll, r_liked=rl)
     print(f"\n=== FINAL EXAM test_cold (K={k}, α={alpha}, model={sel['model_name']}) ===")
     print(f"  cosine : {fmt(base, config.KS)}")
     print(f"  ranker : {fmt(m, config.KS)}")

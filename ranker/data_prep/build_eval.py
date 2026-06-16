@@ -36,7 +36,7 @@ from user_encode import load_user_encoder  # noqa: E402
 def build_split(split: str, enc, cap: int, itemfeat, V, uh: UsersHistory,
                 seen: dict, ages: dict) -> int:
     t0 = time.time()
-    queries = load_queries(split)
+    queries, query_scores = load_queries(split)
     uids = np.asarray(sorted(queries), dtype=np.int64)
     writer = PoolWriter(config.POOLS / f"eval_{split}.parquet",
                         config.POOLS / f"eval_{split}_users.parquet")
@@ -51,10 +51,22 @@ def build_split(split: str, enc, cap: int, itemfeat, V, uh: UsersHistory,
         labels = np.stack([np.isin(c, queries[u]) for c, u in zip(cand, chunk)]).astype(np.int8)
         stats = user_stats_from_support(
             hist_scores, np.asarray([ages.get(int(u), np.nan) for u in chunk]))
+        # liked = query item có score>=1 & score>u_mean (per-user above-own-mean, mirror retriever);
+        # u_n_rated==0 (không có support rated) -> u_mean vô nghĩa -> không có liked.
+        liked_sets = []
+        for i, u in enumerate(chunk):
+            if stats["u_n_rated"][i] > 0:
+                qa, qsc = queries[u], query_scores[u]
+                liked_sets.append(qa[(qsc >= 1) & (qsc > stats["u_mean_score"][i])])
+            else:
+                liked_sets.append(np.empty(0, dtype=np.int64))
+        label_liked = np.stack([np.isin(c, ls) for c, ls in zip(cand, liked_sets)]).astype(np.int8)
+        r_liked = np.asarray([len(ls) for ls in liked_sets], dtype=np.int64)
         cross = cross_features(V, itemfeat, cand, cos, hist_ids, stats)
         frame = build_frame(itemfeat, cand.ravel(), cross)
         r_total = np.asarray([len(queries[u]) for u in chunk])
-        writer.add_chunk(chunk, cand, labels, frame, U.numpy(), hist_ids, r_total)
+        writer.add_chunk(chunk, cand, labels, frame, U.numpy(), hist_ids, r_total,
+                         label_liked=label_liked, r_liked=r_liked)
         print(f"  [{split}] {min(s + config.CHUNK, len(uids)):,}/{len(uids):,} users "
               f"({time.time() - t0:.0f}s)", flush=True)
     n = writer.close()

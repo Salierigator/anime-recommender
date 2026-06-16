@@ -142,7 +142,8 @@ def export_eval_protocol(out: Path, final_exam: bool) -> dict[str, int]:
     counts = {}
     for split in ("val", "test", "val_cold") + (("test_cold",) if final_exam else ()):
         q = pl.read_parquet(config.TRAIN_DATA / "examples" / f"split={split}" / "part-0.parquet")
-        q.select(pl.col("user_idx").cast(pl.Int32), pl.col("anime_idx").cast(pl.Int32)) \
+        q.select(pl.col("user_idx").cast(pl.Int32), pl.col("anime_idx").cast(pl.Int32),
+                 pl.col("score").cast(pl.Int8)) \
             .write_parquet(out / f"eval_queries_{split}.parquet")
         counts[split] = q.height
     if not final_exam:
@@ -213,7 +214,9 @@ Checkpoint metrics (warm slice, val — mask = seen − query, history cap {cfg.
   metrics mean-per-user recall@K / ndcg@K (binary relevance, IDCG chuẩn hoá `min(R,K)`);
   history lúc encode U = prefix `eval_history_cap` của list full (đã sort score desc).
 - `eval_queries_val.parquet` / `eval_queries_test.parquet` / `eval_queries_val_cold.parquet`:
-  `user_idx: int32, anime_idx: int32` — positive held-out (query). Rows: {q_counts}
+  `user_idx: int32, anime_idx: int32, score: int8` — positive held-out (query). `score` =
+  điểm gốc của query item (0 = completed không chấm) — ranker dùng để chấm liked-metric
+  (liked = score>=1 & score>u_mean per-user). Rows: {q_counts}
 - `eval_seen.parquet`: `user_idx, seen_ids: list[int32]` — MỌI interaction mọi status (kể cả PTW)
   của eval user; nguồn duy nhất cho seen-mask.
 - `users_history.parquet`: `user_idx, gender_id, joined_bucket, history_ids, history_scores,

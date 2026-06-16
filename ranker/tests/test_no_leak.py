@@ -67,7 +67,7 @@ def test_train_pool_no_cold_no_eval_users_labels_on_targets(uh):
 def test_eval_pool_mask_and_labels():
     df = pl.read_parquet(config.POOLS / "eval_val.parquet").filter(pl.col("qid") < 50)
     seen = load_eval_seen()
-    queries = load_queries("val")
+    queries, _ = load_queries("val")
     for (u,), g in df.group_by("user_idx"):
         cand = g["anime_idx"].to_numpy()
         q = queries[int(u)]
@@ -81,7 +81,7 @@ def test_eval_pool_mask_and_labels():
 def test_eval_pool_sorted_by_cosine_and_r_total():
     df = pl.read_parquet(config.POOLS / "eval_val.parquet").filter(pl.col("qid") < 20)
     users = pl.read_parquet(config.POOLS / "eval_val_users.parquet").filter(pl.col("qid") < 20)
-    queries = load_queries("val")
+    queries, _ = load_queries("val")
     for (q,), g in df.group_by("qid"):
         cos = g.sort("pool_rank")["cos_uv"].to_numpy()
         assert (cos[:-1] >= cos[1:] - 1e-6).all(), "trong group phải sort cosine desc"

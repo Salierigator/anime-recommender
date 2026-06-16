@@ -27,6 +27,14 @@ def group_examples(user_idx: np.ndarray, anime_idx: np.ndarray) -> Dict[int, Lis
     return out
 
 
+def group_scores(user_idx: np.ndarray, score: np.ndarray) -> Dict[int, List[int]]:
+    """user_idx -> list score (song song group_examples cùng user_idx -> để chấm liked-metric)."""
+    out: Dict[int, List[int]] = {}
+    for u, s in zip(user_idx.tolist(), score.tolist()):
+        out.setdefault(u, []).append(s)
+    return out
+
+
 def build_masks(seen: Dict[int, np.ndarray], queries: Dict[int, List[int]]) -> Dict[int, np.ndarray]:
     """mask_ids[u] = seen[u] − queries[u]: các item phải gạt khỏi ranking khi chấm queries này.
     (Query ⊆ seen by construction — chính vì vậy KHÔNG được mask thẳng seen.)"""
@@ -51,6 +59,24 @@ def load_eval_protocol(train_data: Path, split: str):
     return q_warm, build_masks(seen, q_warm), q_cold, build_masks(seen, q_cold)
 
 
+def load_query_scores(train_data: Path, split: str) -> Dict[int, List[int]]:
+    """user_idx -> list score query của 1 split (cho liked-metric). Song song queries của split."""
+    ds = data_mod.ExamplesDataset(train_data, split)
+    return group_scores(ds.user_idx, ds.score)
+
+
+def support_mean(users, uids) -> Dict[int, float]:
+    """u_mean per uid = mean support score đã chấm (rated = score>=1) từ history FULL.
+    score=0 (completed không chấm) bị loại; user không có rated -> NaN (=> không có liked)."""
+    out: Dict[int, float] = {}
+    for u in uids:
+        s, e = int(users.hist_offs[u]), int(users.hist_offs[u + 1])
+        sc = users.hist_scores[s:e]
+        rated = sc[sc >= 1]
+        out[u] = float(rated.mean()) if len(rated) else float("nan")
+    return out
+
+
 def _pad_mask_ids(mask_ids: Dict[int, np.ndarray], chunk: List[int]) -> np.ndarray:
     """Ghép mask ids của 1 chunk user thành ma trận pad 0 (PAD=0 vốn non-candidate)."""
     mlen = max(max((len(mask_ids[u]) for u in chunk), default=0), 1)
@@ -64,14 +90,21 @@ def _pad_mask_ids(mask_ids: Dict[int, np.ndarray], chunk: List[int]) -> np.ndarr
 @torch.no_grad()
 def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, mask_ids: Dict[int, np.ndarray],
              eval_history_cap: int = 1024, batch: int = 512,
-             candidate_mask: torch.Tensor = None, pooled: bool = False):
+             candidate_mask: torch.Tensor = None, pooled: bool = False,
+             query_scores: Dict[int, List[int]] = None):
     """Protocol v2. model.item_cache phải refresh đúng chế độ TRƯỚC khi gọi
     (warm: refresh_item_cache(); cold: refresh_item_cache(cold_mask=...)).
 
     candidate_mask: override tập được rank (None = isfinite(logq) = mọi real item;
     truyền cold_mask bool[N] để chạy chế độ chỉ-H). pooled=True: thêm hitrate@K
     pooled trên toàn bộ (user, query) pairs + n_pairs (dùng cho cold slice mỏng).
-    Trả dict {recall@K, ndcg@K, n_users[, hitrate@K, n_pairs]}.
+
+    query_scores: song song queries (score của từng query item). Khi có -> thêm
+    liked-recall@K / liked-ndcg@K (report-only): liked = query item có score>=1 &
+    score>u_mean (per-user above-own-mean; u_mean từ full support rated). Ranking/mask
+    KHÔNG đổi -> so trực tiếp với binary. Chỉ tính trên user có >=1 liked query (n_users_liked).
+
+    Trả dict {recall@K, ndcg@K, n_users[, hitrate@K, n_pairs][, liked_recall@K, liked_ndcg@K, n_users_liked]}.
     """
     model.eval()
     device = model.item_cache.device
@@ -84,6 +117,12 @@ def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, mask_ids: Di
     pooled_hits = {k: 0.0 for k in ks}
     total_rel = 0
     n = 0
+
+    liked_on = query_scores is not None
+    u_mean = support_mean(users, uids) if liked_on else {}
+    sums_liked = {f"liked_recall@{k}": 0.0 for k in ks}
+    sums_liked.update({f"liked_ndcg@{k}": 0.0 for k in ks})
+    n_liked = 0
 
     # IDCG[k] precompute (relevant đứng đầu): sum_{i=1..k} 1/log2(i+1)
     discount = 1.0 / np.log2(np.arange(2, kmax + 2))
@@ -127,6 +166,20 @@ def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, mask_ids: Di
             total_rel += R
             n += 1
 
+            if liked_on:
+                mu = u_mean[uid]
+                liked = set() if np.isnan(mu) else {
+                    a for a, sc in zip(queries[uid], query_scores[uid]) if sc >= 1 and sc > mu}
+                R_liked = len(liked)
+                if R_liked:
+                    hit_l = np.array([a in liked for a in ranked], dtype=np.float64)
+                    for k in ks:
+                        hl = hit_l[:k]
+                        sums_liked[f"liked_recall@{k}"] += hl.sum() / R_liked
+                        sums_liked[f"liked_ndcg@{k}"] += (hl * discount[:k]).sum() \
+                            / idcg_cum[min(R_liked, k) - 1]
+                    n_liked += 1
+
     model.train()
     out = {m: (v / n if n else 0.0) for m, v in sums.items()}
     out["n_users"] = n
@@ -134,6 +187,9 @@ def evaluate(model, users, queries: Dict[int, List[int]], logq, ks, mask_ids: Di
         for k in ks:
             out[f"hitrate@{k}"] = pooled_hits[k] / total_rel if total_rel else 0.0
         out["n_pairs"] = total_rel
+    if liked_on:
+        out.update({m: (v / n_liked if n_liked else 0.0) for m, v in sums_liked.items()})
+        out["n_users_liked"] = n_liked
     return out
 
 
@@ -146,7 +202,9 @@ def run_cold_eval(model, users, train_data: Path, logq, ks, split: str = "test",
     spec = data_mod.load_feature_spec(train_data)
     cold_mask = data_mod.load_cold_mask(train_data, spec["num_items"])
     _, _, q_cold, m_cold = load_eval_protocol(train_data, split)
+    qs_cold = load_query_scores(train_data, f"{split}_cold")   # liked-metric (cold = diagnostic-only)
     model.refresh_item_cache(cold_mask=cold_mask)
     cand = cold_mask if h_only else None
     return evaluate(model, users, q_cold, logq, ks, m_cold,
-                    eval_history_cap=eval_history_cap, candidate_mask=cand, pooled=True)
+                    eval_history_cap=eval_history_cap, candidate_mask=cand, pooled=True,
+                    query_scores=qs_cold)

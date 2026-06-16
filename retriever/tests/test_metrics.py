@@ -1,6 +1,7 @@
 """Protocol v2: seen-mask (mask seen − query, KHÔNG mask query), pooled hit-rate,
 candidate_mask (chế độ chỉ-H), eval_history_batch prefix/cap."""
 import numpy as np
+import pytest
 import torch
 
 import metrics
@@ -90,6 +91,60 @@ def test_candidate_mask_h_only():
     out = metrics.evaluate(model, users, {0: [4]}, _logq(N), [1], {0: np.empty(0, np.int64)},
                            candidate_mask=cand)
     assert out["recall@1"] == 1.0, "ngoài candidate set phải bị loại (item2,3 không được rank)"
+
+
+def _stub_users_support(supp_scores: dict):
+    """Stub UserTable với support scores per user (cho support_mean/liked-metric)."""
+    import data as data_mod
+    num_users = len(supp_scores)
+    vals, scores, offs = [], [], [0]
+    for u in range(num_users):
+        sc = supp_scores[u]
+        vals.extend([2] * len(sc))                       # anime_idx support bất kỳ (>=2)
+        scores.extend(sc)
+        offs.append(offs[-1] + len(sc))
+    ut = data_mod.UserTable.__new__(data_mod.UserTable)
+    ut.num_users = num_users
+    ut.hist_vals = np.asarray(vals or [0], np.int32)
+    ut.hist_offs = np.asarray(offs, np.int64)
+    ut.hist_scores = np.asarray(scores or [0], np.int8)
+    ut.gender_id = np.arange(num_users, dtype=np.int64)
+    ut.joined_bucket = np.zeros(num_users, np.int64)
+    return ut
+
+
+def test_liked_recall_ndcg_hand_computed():
+    N = 6
+    U = {0: torch.tensor([0.0, 0.0, 0.9, 0.8, 0.7, 0.6])}  # ranking real desc: 2>3>4>5
+    model = _StubModel(N, U)
+    users = _stub_users_support({0: [6, 4]})            # u_mean rated = 5.0
+    queries = {0: [2, 3, 4, 5]}
+    query_scores = {0: [10, 5, 7, 0]}                      # liked = score>=1 & score>5 -> {2,4}
+    masks = {0: np.empty(0, np.int64)}                     # không mask -> top = [2,3,4,5]
+    out = metrics.evaluate(model, users, queries, _logq(N), [1, 2, 3], masks,
+                           query_scores=query_scores)
+    # R_liked=2 ({2,4}); item3(score5, không > mean) + item5(score0) bị loại
+    assert out["n_users_liked"] == 1
+    assert out["liked_recall@1"] == pytest.approx(0.5)    # top1={2} -> 1/2
+    assert out["liked_recall@2"] == pytest.approx(0.5)    # top2={2,3}, liked hit {2} -> 1/2
+    assert out["liked_recall@3"] == pytest.approx(1.0)    # top3={2,3,4} -> {2,4} -> 2/2
+    idcg2 = 1 + 1 / np.log2(3)                            # min(R_liked,2)=2 liked đứng đầu
+    assert out["liked_ndcg@2"] == pytest.approx(1.0 / idcg2)  # chỉ item2 (rank0) liked
+    # binary vẫn nguyên (ranking/mask không đổi)
+    assert out["recall@3"] == pytest.approx(3 / 4)
+
+
+def test_liked_skips_user_with_no_liked():
+    N = 6
+    U = {0: torch.tensor([0.0, 0.0, 0.9, 0.8, 0.7, 0.6])}
+    model = _StubModel(N, U)
+    users = _stub_users_support({0: [9, 9]})           # u_mean = 9 -> không score query nào > 9
+    queries = {0: [2, 3]}
+    query_scores = {0: [8, 7]}
+    out = metrics.evaluate(model, users, queries, _logq(N), [1, 2], {0: np.empty(0, np.int64)},
+                           query_scores=query_scores)
+    assert out["n_users"] == 1 and out["n_users_liked"] == 0
+    assert out["liked_recall@2"] == 0.0                   # n_liked=0 -> mặc định 0
 
 
 def test_eval_history_batch_prefix_cap(users):

@@ -63,13 +63,18 @@ def load_eval_seen(artifacts: Path = config.ARTIFACTS) -> dict[int, np.ndarray]:
     return {int(u): vals[offs[i]:offs[i + 1]] for i, u in enumerate(uids)}
 
 
-def load_queries(split: str, artifacts: Path = config.ARTIFACTS) -> dict[int, np.ndarray]:
-    """eval_queries_{split}.parquet -> {user_idx: array anime_idx} (giữ nguyên thứ tự file)."""
+def load_queries(split: str, artifacts: Path = config.ARTIFACTS
+                 ) -> tuple[dict[int, np.ndarray], dict[int, np.ndarray]]:
+    """eval_queries_{split}.parquet -> (queries, query_scores): {user_idx: array anime_idx} +
+    {user_idx: array score} song song (giữ thứ tự file). score dùng chấm liked-metric."""
     t = pl.read_parquet(artifacts / f"eval_queries_{split}.parquet")
-    out: dict[int, list] = {}
-    for u, a in zip(t["user_idx"].to_numpy(), t["anime_idx"].to_numpy()):
-        out.setdefault(int(u), []).append(int(a))
-    return {u: np.asarray(v, dtype=np.int64) for u, v in out.items()}
+    qa: dict[int, list] = {}
+    qs: dict[int, list] = {}
+    for u, a, s in zip(t["user_idx"].to_numpy(), t["anime_idx"].to_numpy(), t["score"].to_numpy()):
+        qa.setdefault(int(u), []).append(int(a))
+        qs.setdefault(int(u), []).append(int(s))
+    return ({u: np.asarray(v, dtype=np.int64) for u, v in qa.items()},
+            {u: np.asarray(v, dtype=np.int64) for u, v in qs.items()})
 
 
 def account_age_by_user(artifacts: Path = config.ARTIFACTS,
@@ -188,14 +193,22 @@ class PoolWriter:
         pool_path.parent.mkdir(parents=True, exist_ok=True)
         self.pool_path, self.users_path = pool_path, users_path
         self.writer = None
-        self.users_rows = {"qid": [], "user_idx": [], "r_total": [], "U": [], "hist_top64": []}
+        self.users_rows = {"qid": [], "user_idx": [], "r_total": [], "r_liked": [],
+                           "U": [], "hist_top64": []}
         self.next_qid = 0
 
     def add_chunk(self, uids: np.ndarray, cand: np.ndarray, labels: np.ndarray,
                   frame: pd.DataFrame, U: np.ndarray, hist_top64: list[np.ndarray],
-                  r_total: np.ndarray, keep: np.ndarray | None = None):
-        """cand/labels [n, D]; frame = build_frame flat [n*D]; keep = bool [n] (lọc group)."""
+                  r_total: np.ndarray, label_liked: np.ndarray | None = None,
+                  r_liked: np.ndarray | None = None, keep: np.ndarray | None = None):
+        """cand/labels/label_liked [n, D]; frame = build_frame flat [n*D]; keep = bool [n] (lọc group).
+        label_liked = candidate ∈ liked-query (binary); r_liked [n] = #liked query/user (cả ngoài pool).
+        None (train pool — không chấm liked) -> ghi cột zeros để schema users/pool đồng nhất."""
         n, D = cand.shape
+        if label_liked is None:
+            label_liked = np.zeros_like(labels)
+        if r_liked is None:
+            r_liked = np.zeros(n, dtype=np.int64)
         if keep is None:
             keep = np.ones(n, dtype=bool)
         rows = np.repeat(keep, D)
@@ -207,6 +220,7 @@ class PoolWriter:
         out.insert(1, "user_idx", np.repeat(uids.astype(np.int64), D)[rows])
         out.insert(2, "anime_idx", cand.ravel()[rows])
         out["label"] = labels.ravel()[rows]
+        out["label_liked"] = label_liked.ravel()[rows]
         table = pa.Table.from_pandas(out, preserve_index=False)
         if self.writer is None:
             self.writer = pq.ParquetWriter(self.pool_path, table.schema, compression="zstd")
@@ -216,6 +230,7 @@ class PoolWriter:
             self.users_rows["qid"].append(self.next_qid + int(qid_local[i]))
             self.users_rows["user_idx"].append(int(uids[i]))
             self.users_rows["r_total"].append(int(r_total[i]))
+            self.users_rows["r_liked"].append(int(r_liked[i]))
             self.users_rows["U"].append(U[i].astype(np.float32))
             self.users_rows["hist_top64"].append(hist_top64[i][:config.HIST_TOP64].astype(np.int32))
         self.next_qid += int(keep.sum())
@@ -227,6 +242,7 @@ class PoolWriter:
             "qid": np.asarray(self.users_rows["qid"], np.int64),
             "user_idx": np.asarray(self.users_rows["user_idx"], np.int64),
             "r_total": np.asarray(self.users_rows["r_total"], np.int32),
+            "r_liked": np.asarray(self.users_rows["r_liked"], np.int32),
             "U": [u.tolist() for u in self.users_rows["U"]],
             "hist_top64": [h.tolist() for h in self.users_rows["hist_top64"]],
         }).write_parquet(self.users_path)

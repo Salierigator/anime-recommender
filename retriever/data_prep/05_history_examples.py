@@ -101,7 +101,7 @@ def main():
     for name, code in [("val_cold", 1), ("test_cold", 2)]:
         d = EX / f"split={name}"
         d.mkdir(parents=True, exist_ok=True)
-        ex = pos.filter(is_cold & (pl.col("split_code") == code)).select("user_idx", "anime_idx")
+        ex = pos.filter(is_cold & (pl.col("split_code") == code)).select("user_idx", "anime_idx", "score")
         ex.write_parquet(d / "part-0.parquet")
         assert ex.filter(pl.col("anime_idx") < 2).height == 0, f"{name} chứa PAD/OOV"
         nu = ex["user_idx"].n_unique()
@@ -134,7 +134,7 @@ def main():
         d = EX / f"split={name}"
         d.mkdir(parents=True, exist_ok=True)
         ex = pos.filter(pl.col("is_example") & (pl.col("split_code") == code)).select(
-            "user_idx", "anime_idx"
+            "user_idx", "anime_idx", "score"
         )
         ex.write_parquet(d / "part-0.parquet")
         print(f"  {name:<6} {ex.height:>10,}")
