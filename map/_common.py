@@ -108,13 +108,13 @@ def load_coords(method: str) -> pd.DataFrame:
 
 # ---- reducer IO (method-aware: ParametricUMAP có keras model riêng) ----
 def reducer_path(method: str) -> Path:
-    return OUTPUTS / (f"reducer_{method}" if method == "pumap" else f"reducer_{method}.pkl")
+    return OUTPUTS / (f"reducer_{method}" if method == "pumap2d" else f"reducer_{method}.pkl")
 
 
 def save_reducer(method: str, reducer) -> Path:
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     p = reducer_path(method)
-    if method == "pumap":
+    if method == "pumap2d":
         reducer.save(str(p))                       # ParametricUMAP.save -> thư mục (keras + pickle)
     else:
         import joblib
@@ -126,7 +126,7 @@ def load_reducer(method: str):
     p = reducer_path(method)
     if not p.exists():
         raise FileNotFoundError(f"Chưa fit reducer cho '{method}' — chạy project.py --method {method} trước ({p})")
-    if method == "pumap":
+    if method == "pumap2d":
         from umap.parametric_umap import load_ParametricUMAP
         return load_ParametricUMAP(str(p))
     import joblib
