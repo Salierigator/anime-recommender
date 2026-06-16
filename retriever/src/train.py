@@ -59,6 +59,13 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
     queries = metrics_mod.group_examples(eval_ds.user_idx, eval_ds.anime_idx)
     mask_ids = metrics_mod.build_masks(data_mod.load_eval_seen(cfg.train_data), queries)
 
+    # (tuỳ chọn) cold val trong loop — chỉ để QUAN SÁT đường cong overfit warm↔cold, KHÔNG
+    # ảnh hưởng best.pt/early-stop (vẫn theo warm). Precompute 1 lần (tránh đọc parquet mỗi eval).
+    cold_mask = q_cold = m_cold = None
+    if cfg.eval_cold_in_loop:
+        cold_mask = data_mod.load_cold_mask(cfg.train_data, spec["num_items"])
+        _, _, q_cold, m_cold = metrics_mod.load_eval_protocol(cfg.train_data, cfg.eval_split)
+
     opt_cls = torch.optim.AdamW if cfg.optimizer == "adamw" else torch.optim.Adam
     opt = opt_cls(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     sched = (torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=len(loader) * cfg.epochs)
@@ -66,7 +73,8 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
 
     cfg.ckpt_dir.mkdir(parents=True, exist_ok=True)
     headline = f"recall@{cfg.headline_k}"
-    history = {"loss_steps": [], "loss_vals": [], "eval_steps": [], "eval_metrics": []}
+    history = {"loss_steps": [], "loss_vals": [], "eval_steps": [], "eval_metrics": [],
+               "eval_cold_steps": [], "eval_cold_metrics": []}
     # loss_sum/loss_cnt: gom loss (đã log mỗi log_every) để in TB mỗi lần eval rồi reset
     state = {"best": -1.0, "loss_sum": 0.0, "loss_cnt": 0, "saved_once": False,
              "since_best": 0, "stop": False}
@@ -103,6 +111,15 @@ def fit(cfg: cfg_mod.TwoTowerConfig):
                 mark += "  ⏹"
         print(f"  step {step:>7,} │ {loss_str} │ recall {rec} │ "
               f"ndcg@{cfg.eval_ks[-1]} {m[f'ndcg@{cfg.eval_ks[-1]}']:.3f} │ n={int(m['n_users']):,}{mark}")
+        if cfg.eval_cold_in_loop:                          # cold val (full-catalog) — chỉ log, KHÔNG đổi best/early-stop
+            model.refresh_item_cache(cold_mask=cold_mask)  # encode H -> OOV
+            mc = metrics_mod.evaluate(model, users, q_cold, logq, cfg.eval_ks, m_cold,
+                                      eval_history_cap=cfg.eval_history_cap, pooled=True)
+            history["eval_cold_steps"].append(step)
+            history["eval_cold_metrics"].append(mc)
+            model.refresh_item_cache()                     # KHÔI PHỤC warm cache (training/eval sau dùng)
+            print(f"           └ cold │ recall "
+                  + "  ".join(f"@{k} {mc[f'recall@{k}']:.3f}" for k in cfg.eval_ks))
 
     step = 0
     do_eval(0, 0)                                          # baseline random-init (neo đường cong)

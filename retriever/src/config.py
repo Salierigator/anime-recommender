@@ -70,6 +70,7 @@ class TwoTowerConfig:
     eval_history_cap: int = 1024     # prefix history (đã sort score desc) dùng lúc eval
     eval_split: str = "val"
     eval_every_steps: int = 0        # eval val mỗi N step trong epoch (0 = chỉ cuối epoch)
+    eval_cold_in_loop: bool = False  # True: do_eval cũng chấm cold val (full-catalog) -> history (chỉ bật cho run final; KHÔNG ảnh hưởng chọn checkpoint)
     early_stop_patience: Optional[int] = None  # early-stop (None = TẮT)
     early_stop_min_delta: float = 0.0          # ngưỡng tối thiểu để reset patience (vd 0.001 cho recall@200)
 
