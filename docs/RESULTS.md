@@ -3,6 +3,8 @@
 Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / baselines) + chỉ rõ **số nào lấy từ file nào** và **vì sao có 2 biến thể số retriever**. Đây là file tổng hợp — số gốc luôn nằm trong các file máy-sinh được liệt kê ở §1.
 
 > ⚠️ Snapshot **2026-06-11**: retriever `v5_hist64_ep2` (2 epoch) + ranker `xendcg_lr05_l63`. Retriever còn tune trên Colab → mỗi lần best.pt đổi, TOÀN BỘ số ở đây đổi theo (chạy lại loop `docs/RANKER.md §9` rồi cập nhật file này). Trạng thái mới nhất: root `PROGRESS.md`.
+>
+> 🔴 **STALE (2026-06-16)**: best.pt đã đổi sang **`v_final`** (`history_source=embed`, `train_hist_len=128`, 10 epoch, **synopsis ON dim 64** — ablation xác nhận warm cải thiện, `docs/SYNOPSIS_EMB.md`). MỌI số retriever/two-stage bên dưới (dựa trên `v5_hist64_ep2`) chưa cập nhật theo best.pt mới — cần re-measure serve-path + retrain ranker (`docs/RANKER.md §9`) trước khi trích dẫn. (Cold ablation syn on/off: chờ số.)
 
 ---
 

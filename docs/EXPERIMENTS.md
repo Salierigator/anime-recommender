@@ -5,6 +5,10 @@
 > nằm ở Drive `recommender_train_colab/runs.csv` + `runs/v5/<run_name>/{row,config,history}.json`;
 > tổng hợp số chốt: `RESULTS.md`. Code: `retriever/src/{config,data,model,train,search}.py`,
 > `retriever/data_prep/07_synopsis_emb.py`, `retriever/train.ipynb`.
+>
+> ⚠️ **Config final hiện tại = `v_final`** (2026-06-16): `history_source=embed`, `train_hist_len=128`,
+> 10 epoch, **synopsis ON dim 64** (`final_syn`/best.pt). Số `v5_hist64_ep2` trong `RESULTS.md`/
+> `PROGRESS.md` đã STALE — chờ re-measure + retrain ranker (`docs/RANKER.md §9`).
 
 ## 0. Bối cảnh
 
@@ -53,6 +57,10 @@ tín hiệu nội dung mà 9 feature categorical/multi-hot không có — kỳ v
 
 **Ladder thử**: (1) baseline `use_synopsis=True, dim=48, hidden=[]` (MiniLM) vs control OFF — đo warm
 recall@200 + cold; (2) nếu cải thiện → `dim=64`, `hidden=[128]`, rồi swap `bge-small`. Mỗi lần lật 1 đòn bẩy.
+
+**Kết quả (2026-06-16)**: ablation `final` (syn OFF) vs `final_syn` (syn ON) — **cùng config v_final**,
+chỉ khác `use_synopsis` — xác nhận synopsis cải thiện **warm** (test ndcg@10 +.025, r@200 +.010), đã
+chốt `synopsis_dim=64` vào best.pt. Bảng số + caveat cold (chưa có ablation): **`docs/SYNOPSIS_EMB.md`**.
 
 ---
 
