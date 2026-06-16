@@ -13,3 +13,11 @@ lightgbm
 requests
 pytest
 sentence-transformers   # offline synopsis embedding (retriever/data_prep/07_synopsis_emb.py)
+
+# map/ — bản đồ trực quan không gian Two-Tower (thử nghiệm; prune sau khi chốt phương pháp)
+scikit-learn            # PCA / t-SNE / KMeans / HDBSCAN (sklearn>=1.3)
+umap-learn              # UMAP cosine 2D + haversine sphere + densMAP
+pacmap                  # non-priority: cấu trúc toàn cục (hình đẹp)
+plotly                  # render HTML tương tác 2D scatter + sphere 3D
+joblib                  # lưu/đọc fitted reducer (.pkl)
+tensorflow              # CHỈ cho ParametricUMAP (nặng) — gỡ nếu không chốt pumap
