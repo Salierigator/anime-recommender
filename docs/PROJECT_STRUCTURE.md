@@ -60,7 +60,7 @@ anime-recommender/
 │   ├── eval.py               #   sanity gate + blend sweep + Pareto select + test report
 │   ├── export.py             #   winner → artifacts/ranker.txt + ranker_meta.json
 │   ├── report_models.py      #   models/<run>/results.txt (per-model, chỉ VAL)
-│   └── train.ipynb           #   notebook Colab (LightGBM sweep + NN DIN)
+│   └── train.ipynb           #   notebook Colab (NN DIN only — LightGBM sweep train LOCAL: src/train_lgbm.py)
 │
 └── service/                  # web app — chi tiết: service/CLAUDE.md
     ├── backend/              #   recommend.py (CLI XONG — 3 nguồn user, 2 section warm/cold)

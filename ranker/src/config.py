@@ -18,6 +18,7 @@ DATASETS = DATA / "datasets"                           # train/valid (data_prep/
 MODELS = ROOT / "models"                               # gitignored: model tải về từ Colab + results.txt
 
 SEED = 42
+NUM_THREADS = 4           # thread LightGBM train local (M3 4 P-core) — giảm để đỡ nóng máy
 K_POOL = 200              # pool rerank lúc serve (two-stage); train candidates = top-K_POOL
 POOL_DEPTH = 500          # eval pool lưu sâu 500 → ablation K∈{200,500} không cần re-encode
 TARGET_FRAC = 0.2         # tỉ lệ positive giữ làm target khi build train (mirror EVAL_QUERY_FRAC)

@@ -20,6 +20,7 @@ import torch  # noqa: F401  (TRƯỚC lightgbm — segfault 2 OpenMP runtime tr�
 import lightgbm as lgb
 import polars as pl
 
+import config
 from features import CAT_COLS, FEATURE_NAMES
 from metrics import load_pool_arrays, sweep_best_alpha
 
@@ -36,6 +37,7 @@ BASE = dict(
     ndcg_eval_at=[10, 100],
     verbosity=-1,
     seed=42,
+    num_threads=config.NUM_THREADS,   # giảm thread → train local đỡ nóng máy
 )
 NUM_ROUNDS = 4000
 EARLY_STOP = 100
@@ -105,11 +107,36 @@ def train_one(run_name: str, out_dir: Path, dtrain, dvalid, valid_arrays,
     return row
 
 
+# Sweep grid LightGBM (mirror notebook cell 4 cũ): trục objective × lr × leaves.
+SWEEP = [
+    ("xendcg_lr05_l63",  dict(objective="rank_xendcg")),                       # winner CHỐT
+    ("lrank10_lr05_l63",  dict(lambdarank_truncation_level=10)),
+    ("lrank30_lr05_l63",  dict(lambdarank_truncation_level=30)),
+    ("lrank200_lr05_l63", dict(lambdarank_truncation_level=200)),
+    ("xendcg_lr10_l63",   dict(objective="rank_xendcg", learning_rate=0.1)),
+    ("xendcg_lr05_l127",  dict(objective="rank_xendcg", num_leaves=127)),
+]
+
+
+def leaderboard(models_dir: Path) -> None:
+    """Gom models/*/row.json → in bảng + ghi models/leaderboard.csv (sort val_ndcg@10)."""
+    import pandas as pd
+
+    rows = [json.loads(p.read_text()) for p in sorted(models_dir.glob("*/row.json"))]
+    if not rows:
+        return
+    df = pd.DataFrame(rows).drop(columns=["importance_gain"], errors="ignore") \
+        .sort_values("val_ndcg@10", ascending=False)
+    df.to_csv(models_dir / "leaderboard.csv", index=False)
+    print("\n=== leaderboard (val_ndcg@10) ===")
+    print(df.to_string(index=False))
+
+
 def main() -> None:
-    """--smoke: slice nhỏ local (sanity end-to-end, KHÔNG phải số thật)."""
+    """Sweep grid LightGBM LOCAL → models/<run>/{model.txt,row.json} + leaderboard.csv.
+    --smoke: slice 3k + 1 config (sanity end-to-end, KHÔNG phải số thật)."""
     import argparse
 
-    import config
     ap = argparse.ArgumentParser()
     ap.add_argument("--smoke", action="store_true")
     args = ap.parse_args()
@@ -119,9 +146,13 @@ def main() -> None:
     global NUM_ROUNDS
     if args.smoke:
         NUM_ROUNDS = 50
-    train_one("smoke_lambdarank" if args.smoke else "lambdarank30",
-              config.MODELS, dtrain, dvalid, valid_arrays,
-              lambdarank_truncation_level=30)
+        sweep = [("smoke_xendcg", dict(objective="rank_xendcg"))]
+    else:
+        sweep = SWEEP
+
+    for run_name, overrides in sweep:
+        train_one(run_name, config.MODELS, dtrain, dvalid, valid_arrays, **overrides)
+    leaderboard(config.MODELS)
 
 
 if __name__ == "__main__":

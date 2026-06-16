@@ -38,9 +38,10 @@ retriever/export.py ──> artifacts/{item_vectors, user_tower, user_split,
 retriever/test_export.py ──> artifacts/eval_reference.json (cosine baseline đo QUA artifacts)
 ranker/data_prep/build_eval.py  ──> train-data/pools/eval_{val,test,val_cold}{,_users}.parquet (depth 500)
 ranker/data_prep/build_train.py ──> train-data/datasets/train{,_users}.parquet + build_meta.json (K=200)
-        │ (upload Drive: datasets/* + pools/eval_val* + item_vectors.npy)
-ranker/train.ipynb (Colab) ──> Drive runs_ranker/<ver>/<run>/{model.*, row.json} + ranker_runs.csv
-        │ (tải winner về models/<run>/)
+        │ (upload Drive cho NN: datasets/* + pools/eval_val* + item_vectors.npy)
+ranker/src/train_lgbm.py (LOCAL) ──> models/<run>/{model.txt, row.json} + models/leaderboard.csv (sweep grid)
+ranker/train.ipynb (Colab, NN DIN) ──> Drive runs_ranker/<ver>/nn_*/{model.pt, row.json}
+        │ (tải winner NN về models/<run>/ nếu chốt NN)
 ranker/eval.py            ──> blend sweep + Pareto select + test report + val_cold
                               (+ ghi models/eval_selection.json — bản ghi đầy đủ lúc chọn)
 ranker/report_models.py    > models/<run>/results.txt (per-model: sweep α + val per-K + cold
@@ -179,8 +180,9 @@ thẳng theo pred) → main list; cold: section riêng sort theo cosine. Tham ch
 venv/bin/python retriever/export.py && venv/bin/python retriever/test_export.py
 venv/bin/python ranker/data_prep/build_eval.py      # ~30s
 venv/bin/python ranker/eval.py --baseline-only      # sanity gate
-venv/bin/python ranker/data_prep/build_train.py     # ~1 phút, in list upload Drive
-# → Colab ranker/train.ipynb (sweep + leaderboard) → tải winner về ranker/models/<run>/ →
+venv/bin/python ranker/data_prep/build_train.py     # ~1 phút, in list upload Drive (cho NN)
+venv/bin/python ranker/src/train_lgbm.py            # LightGBM sweep grid LOCAL → models/<run>/ + leaderboard.csv
+# (NN DIN comparator vẫn trên Colab ranker/train.ipynb — tải winner NN về models/<run>/ nếu cần)
 venv/bin/python ranker/eval.py                      # select + test report + val_cold
 venv/bin/python ranker/export.py \
   && venv/bin/python -m pytest ranker/tests -q
