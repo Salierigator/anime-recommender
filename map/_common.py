@@ -23,7 +23,7 @@ CLEANED = ROOT / "cleaned-data"
 TRAIN_DATA = ROOT / "retriever" / "train-data"
 OUTPUTS = Path(__file__).resolve().parent / "outputs"
 
-DETAIL_COLS = ["mal_id", "title", "type", "genres", "studios", "popularity", "start_date"]
+DETAIL_COLS = ["mal_id", "title", "type", "genres", "themes", "studios", "popularity", "start_date"]
 
 
 def feature_spec() -> dict:
@@ -50,8 +50,8 @@ def _parse_list(v):
 def build_base_table() -> tuple[pd.DataFrame, np.ndarray]:
     """Join item_vectors + item_index + details -> (base_df, vectors_real) căn hàng theo row.
 
-    base_df cột: anime_idx, mal_id, title, type, primary_genre, genres_list, popularity,
-    start_year, is_cold. Loại PAD/OOV (mal_id == -1)."""
+    base_df cột: anime_idx, mal_id, title, type, primary_genre, genres_list, themes_list,
+    popularity, start_year, is_cold. Loại PAD/OOV (mal_id == -1)."""
     import pyarrow.parquet as pq
 
     vectors = np.load(ARTIFACTS / "item_vectors.npy")
@@ -62,9 +62,10 @@ def build_base_table() -> tuple[pd.DataFrame, np.ndarray]:
     base = idx.merge(det, on="mal_id", how="left").reset_index(drop=True)
 
     base["genres_list"] = base["genres"].map(_parse_list)
+    base["themes_list"] = base["themes"].map(_parse_list)
     base["primary_genre"] = base["genres_list"].map(lambda L: L[0] if L else "Unknown")
     base["start_year"] = pd.to_datetime(base["start_date"], errors="coerce").dt.year
-    base = base.drop(columns=["genres", "studios", "start_date"])
+    base = base.drop(columns=["genres", "themes", "studios", "start_date"])
 
     vectors_real = vectors[base["anime_idx"].to_numpy()]
     return base, vectors_real.astype(np.float32)

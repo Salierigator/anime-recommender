@@ -11,11 +11,47 @@ Vector đã L2-norm -> euclidean trên vector chuẩn hoá đơn điệu với c
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 
 import numpy as np
 import pandas as pd
 
 import _common as C
+
+
+def name_clusters(base: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
+    """Đặt tên mỗi cụm theo genre+theme ĐẶC TRƯNG (lift = tần suất trong cụm / toàn cục), thay vì
+    top-1 genre (genre rộng như Action/Comedy có mặt khắp nơi -> vô nghĩa). Tên = 2 tag lift cao
+    nhất (xuất hiện ở >=15% cụm). Trả [label, name, size, examples] (examples = 3 title phổ biến)."""
+    n_total = len(base)
+    themes = base["themes_list"] if "themes_list" in base.columns else [[]] * n_total
+    tagsets = [set(g) | set(t) for g, t in zip(base["genres_list"], themes)]
+    global_df = Counter(t for s in tagsets for t in s)            # doc-freq toàn cục mỗi tag
+
+    b = base.assign(_label=labels, _tags=tagsets)
+    rows = []
+    for lab, grp in b.groupby("_label"):
+        n = len(grp)
+        if lab == -1:
+            name = "noise"
+        else:
+            cc = Counter(t for s in grp["_tags"] for t in s)
+            scored = sorted(((cc[t] / n) / (global_df[t] / n_total), cc[t] / n, t)
+                            for t in cc if cc[t] / n >= 0.15)       # lift, support>=15%
+            name = "·".join(t for _, _, t in scored[-2:][::-1]) if scored \
+                else grp["primary_genre"].mode().iloc[0]
+        ex = " · ".join(grp.sort_values("popularity")["title"].head(3).astype(str).tolist())
+        rows.append({"label": int(lab), "name": name, "size": int(n), "examples": ex})
+
+    df = pd.DataFrame(rows).sort_values("size", ascending=False).reset_index(drop=True)
+    seen: dict[str, int] = {}                                      # khử trùng tên (cùng top-2 tag)
+    for i, nm in enumerate(df["name"]):
+        if nm in seen:
+            seen[nm] += 1
+            df.loc[i, "name"] = f"{nm} ({seen[nm]})"
+        else:
+            seen[nm] = 1
+    return df
 
 
 def main() -> None:
@@ -43,6 +79,11 @@ def main() -> None:
     out = C.OUTPUTS / f"clusters_{args.algo}.parquet"
     df.to_parquet(out)
     print(f"-> {out}  ({n_clusters} cụm" + (f", {n_noise:,} noise" if n_noise else "") + ")")
+
+    names = name_clusters(base, labels)
+    names.to_parquet(C.OUTPUTS / f"cluster_names_{args.algo}.parquet")
+    print(f"-> cluster_names_{args.algo}.parquet  (tên theo genre+theme đặc trưng)")
+    print(names[["name", "size"]].head(12).to_string(index=False))
 
 
 if __name__ == "__main__":

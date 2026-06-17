@@ -45,8 +45,8 @@ venv/bin/python map/build_base.py
 venv/bin/python map/project.py --method umap2d
 venv/bin/python map/project.py --method umap_sphere
 
-# 2) cluster 128-d (tuỳ chọn, để tô màu)
-venv/bin/python map/cluster.py --algo hdbscan
+# 2) cluster 128-d (+ tự đặt TÊN cụm theo genre/theme đặc trưng -> cluster_names_<algo>.parquet)
+venv/bin/python map/cluster.py --algo kmeans --k 24
 
 # 3) đặt điểm mới
 venv/bin/python map/encode_user.py <username> --method umap2d         # user dataset
@@ -54,10 +54,10 @@ venv/bin/python map/encode_user.py --mal-ids ids.txt --name me --method umap_sph
 venv/bin/python map/encode_genre.py --method umap2d --genre Action     # centroid + probe
 venv/bin/python map/encode_genre.py --method umap_sphere --all
 
-# 4) render HTML tương tác
-venv/bin/python map/viz.py --method umap2d --color primary_genre
-venv/bin/python map/viz.py --method umap_sphere --color cluster --cluster hdbscan \
-    --overlay overlay_user_me overlay_genre_Action
+# 4) render HTML tương tác (color=cluster -> tô + nhãn theo TÊN cụm; probe ẩn mặc định)
+venv/bin/python map/viz.py --method umap2d --color cluster --cluster kmeans
+venv/bin/python map/viz.py --method umap_sphere --color cluster --cluster kmeans \
+    --overlay overlay_user_me        # thêm --show-probe nếu muốn xem probe
 ```
 
 ## Nhật ký findings (2026-06-16, verify lần đầu)
@@ -77,4 +77,28 @@ venv/bin/python map/viz.py --method umap_sphere --color cluster --cluster hdbsca
   (`mutex lock failed` — C++ runtime, không catch được từ Python; py3.9/macOS cũ). Code path đúng,
   chạy được nơi TF import OK (Colab/Linux). Nếu bỏ pumap → gỡ `tensorflow` khỏi `requirements.txt`.
 
-TODO khi xem HTML: chốt method đẹp nhất rồi prune libs thừa (nhất là `tensorflow`).
+## Nhật ký findings (2026-06-17, Phase 1 — đọc-được hình)
+
+Sau khi user xem HTML Colab (pumap2d + umap_sphere): genre rộng đè nhau, centroid genre dồn
+cục, probe vô nghĩa, sphere trong suốt. Đo lại trên 128-d giải thích **không gian xếp theo
+KHÁN GIẢ (co-watch), không theo nhãn genre**:
+- mean-cosine-tới-tâm: franchise (Pokemon/Gundam/Dragon Ball/Conan…) **0.75–0.90**, genre rộng
+  (Action .46, Comedy .57, Drama .53) **≈ baseline ngẫu nhiên .30** → smear khắp map; genre =
+  1-khán-giả (Hentai .87, Avant Garde .84, Boys Love .80) chặt + nằm lệch hẳn 1 góc.
+- centroid genre 2D dồn cục vì genre rộng phủ 74–97% bề rộng map → trung bình về tâm (toán học).
+- probe co cụm (sphere: spread .47 vs centroid .98) → off-manifold, **ẩn mặc định** trong viz.
+
+**Đổi để hình đọc được (thay 21 genre smear):**
+- `build_base` kéo thêm `themes_list` (Mecha/Isekai/School/Music…) — tín hiệu khán giả mạnh hơn genre.
+- `cluster.py` tự đặt TÊN cụm theo genre+theme **lift cao** (đặc trưng), không phải top-1 genre →
+  k=24 ra tên có nghĩa: Mecha·Space (Gundam), Strategy Game·Adventure (Pokemon/Digimon),
+  Suspense·Mystery (Death Note/AoT/FMA), Hentai, Boys Love·Idols, Harem·Ecchi, idol, Music…
+  (cụm mainstream Comedy·Fantasy/Adventure·Comedy vẫn nhạt — đó là phần liên tục, không tách được).
+- `viz.py`: `--color cluster` tô + ghi **nhãn tên cụm tại tâm cụm**; sphere thêm **vỏ cầu đục
+  r=0.97 + marker opaque** → che bán cầu xa, hết "điểm mặt sau lòi qua mặt trước".
+- Out HTML: `umap2d_named.html`, `pumap2d_named.html` (2D), `umap_sphere_named.html` (sphere).
+
+Demographic (shounen/seinen…) bị loại làm trục màu chính: 71% rỗng. → genre vẫn là lựa chọn phụ.
+
+TODO: Phase 2 — export base map (JSON/binary) cho frontend tự render WebGL + API "you are here"
+(backend `reducer.transform` → toạ độ); chốt method rồi prune libs thừa (nhất là `tensorflow`).
