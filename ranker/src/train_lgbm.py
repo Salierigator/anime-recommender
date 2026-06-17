@@ -130,7 +130,7 @@ def train_one(run_name: str, out_dir: Path, dtrain, dvalid, valid_arrays,
         **{f"val_{m}": round(best_m[m], 5)
            for m in ("recall@10", "recall@100", "ndcg@10", "ndcg@100")},
         **{f"val_{m}": round(liked_m[m], 5)
-           for m in ("liked_recall@100", "liked_ndcg@10")},
+           for m in ("liked_recall@10", "liked_recall@100", "liked_ndcg@10")},
         "train_sec": round(time.time() - t0),
         "importance_gain": dict(zip(FEATURE_NAMES,
                                     booster.feature_importance("gain").round(1).tolist())),
