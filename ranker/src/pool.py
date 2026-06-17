@@ -200,15 +200,19 @@ class PoolWriter:
     def add_chunk(self, uids: np.ndarray, cand: np.ndarray, labels: np.ndarray,
                   frame: pd.DataFrame, U: np.ndarray, hist_top64: list[np.ndarray],
                   r_total: np.ndarray, label_liked: np.ndarray | None = None,
-                  r_liked: np.ndarray | None = None, keep: np.ndarray | None = None):
+                  r_liked: np.ndarray | None = None, keep: np.ndarray | None = None,
+                  target_score: np.ndarray | None = None):
         """cand/labels/label_liked [n, D]; frame = build_frame flat [n*D]; keep = bool [n] (lọc group).
         label_liked = candidate ∈ liked-query (binary); r_liked [n] = #liked query/user (cả ngoài pool).
-        None (train pool — không chấm liked) -> ghi cột zeros để schema users/pool đồng nhất."""
+        target_score [n, D] = score THÔ của cand nếu là target (else 0) — cho relabel sweep train_lgbm
+        (liked-aware/steep) mà KHÔNG cần rebuild. None -> ghi cột zeros để schema đồng nhất."""
         n, D = cand.shape
         if label_liked is None:
             label_liked = np.zeros_like(labels)
         if r_liked is None:
             r_liked = np.zeros(n, dtype=np.int64)
+        if target_score is None:
+            target_score = np.zeros_like(labels)
         if keep is None:
             keep = np.ones(n, dtype=bool)
         rows = np.repeat(keep, D)
@@ -221,6 +225,7 @@ class PoolWriter:
         out.insert(2, "anime_idx", cand.ravel()[rows])
         out["label"] = labels.ravel()[rows]
         out["label_liked"] = label_liked.ravel()[rows]
+        out["target_score"] = target_score.ravel()[rows]
         table = pa.Table.from_pandas(out, preserve_index=False)
         if self.writer is None:
             self.writer = pq.ParquetWriter(self.pool_path, table.schema, compression="zstd")

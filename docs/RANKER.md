@@ -5,6 +5,8 @@
 > `ranker/CLAUDE.md` (firewall + lệnh chạy).
 
 > ⚠️ Số liệu = snapshot **2026-06-11** (retriever `v5_hist64_ep2` → ranker `xendcg_lr05_l63`). Retriever còn tune → mỗi lần best.pt đổi phải chạy lại loop §9, số sẽ đổi theo; số mới nhất: root `PROGRESS.md`. Tổng hợp mọi kết quả + bản đồ nguồn từng con số: `docs/RESULTS.md`. Protocol/kiến trúc/quyết định thiết kế thì ổn định.
+>
+> 🔴 **MISMATCH hiện tại (2026-06-17)**: retriever đã chốt `final` (no synopsis) và **re-export** artifacts (vectors mới: warm pool r@200 .6758, cosine ndcg@10 .5323 — `docs/RESULTS.md §3b`). `ranker.txt` vẫn train trên pool `v5_hist64_ep2` cũ → mọi số two-stage dưới đây STALE. **Việc tiếp**: chạy lại loop §9 (build_eval → gate → build_train → Colab → eval → export) trên pool `final`.
 
 ## 1. Vai trò & kiến trúc
 
@@ -38,10 +40,10 @@ retriever/export.py ──> artifacts/{item_vectors, user_tower, user_split,
 retriever/test_export.py ──> artifacts/eval_reference.json (cosine baseline đo QUA artifacts)
 ranker/data_prep/build_eval.py  ──> train-data/pools/eval_{val,test,val_cold}{,_users}.parquet (depth 500)
 ranker/data_prep/build_train.py ──> train-data/datasets/train{,_users}.parquet + build_meta.json (K=200)
-        │ (upload Drive cho NN: datasets/* + pools/eval_val* + item_vectors.npy)
+        │ (+ cột target_score: raw score/cand → relabel sweep train_lgbm KHÔNG cần rebuild)
 ranker/src/train_lgbm.py (LOCAL) ──> models/<run>/{model.txt, row.json} + models/leaderboard.csv (sweep grid)
-ranker/train.ipynb (Colab, NN DIN) ──> Drive runs_ranker/<ver>/nn_*/{model.pt, row.json}
-        │ (tải winner NN về models/<run>/ nếu chốt NN)
+        │ (--relabel steep|liked: grade lại label; row.json log thêm liked_ndcg@10 + liked_recall@100)
+ranker/src/train_nn.py (LOCAL, MPS/CPU) ──> models/nn_*/{model.pt, row.json}  (comparator — optional)
 ranker/eval.py            ──> blend sweep + Pareto select + test report + val_cold
                               (+ ghi models/eval_selection.json — bản ghi đầy đủ lúc chọn)
 ranker/report_models.py    > models/<run>/results.txt (per-model: sweep α + val per-K + cold
@@ -182,7 +184,8 @@ venv/bin/python ranker/data_prep/build_eval.py      # ~30s
 venv/bin/python ranker/eval.py --baseline-only      # sanity gate
 venv/bin/python ranker/data_prep/build_train.py     # ~1 phút, in list upload Drive (cho NN)
 venv/bin/python ranker/src/train_lgbm.py            # LightGBM sweep grid LOCAL → models/<run>/ + leaderboard.csv
-# (NN DIN comparator vẫn trên Colab ranker/train.ipynb — tải winner NN về models/<run>/ nếu cần)
+venv/bin/python ranker/src/train_lgbm.py --relabel liked   # (tuỳ chọn) grade liked-aware — xem docs/RANKER_EXPERIMENTS.md
+# (NN DIN comparator: ranker/src/train_nn.py LOCAL trên MPS/CPU — optional, không chốt qua NN)
 venv/bin/python ranker/eval.py                      # select + test report + val_cold
 venv/bin/python ranker/export.py \
   && venv/bin/python -m pytest ranker/tests -q

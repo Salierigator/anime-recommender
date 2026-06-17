@@ -8,9 +8,10 @@
 >
 > ⚠️ **Config final = `final`** (2026-06-17): `history_source=embed`, `train_hist_len=128`, 10 epoch, d128,
 > τ.07, logQ α=1, **synopsis OFF**. Synopsis (`final_syn`) đã test on/off và **bị bác** — cải thiện warm
-> nhưng regress cold, mà retriever ưu tiên cold (`docs/SYNOPSIS_EMB.md`). **PENDING**: `best.pt`/`artifacts/`
-> hiện vẫn `final_syn` (`CONTRACT.md` step 41000) → chờ re-export best.pt=`final` + retrain ranker
-> (`docs/RANKER.md §9`). Số `v5_hist64_ep2` trong `RESULTS.md`/`PROGRESS.md` cũng STALE.
+> nhưng regress cold, mà retriever ưu tiên cold (`docs/SYNOPSIS_EMB.md`). ✅ **Re-export DONE (2026-06-17)**:
+> `best.pt`/`artifacts/` giờ là `final` (`CONTRACT.md` step 31500), serve-path official trong `docs/RESULTS.md §3b`.
+> Còn lại: retrain ranker trên pool `final` (`docs/RANKER.md §9`); số two-stage `v5_hist64_ep2` trong
+> `RESULTS.md`/`PROGRESS.md` vẫn STALE cho tới khi retrain.
 
 ## 0. Bối cảnh
 

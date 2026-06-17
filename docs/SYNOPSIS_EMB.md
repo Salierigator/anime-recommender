@@ -7,10 +7,10 @@
 > **config final chốt `final` = synopsis OFF**. Code synopsis GIỮ NGUYÊN (chỉ `use_synopsis=False`),
 > có thể bật lại nếu sau này phục vụ cold qua kênh khác. Bối cảnh thử nghiệm chung: `docs/EXPERIMENTS.md §1`.
 >
-> ⚠️ **PENDING re-export**: `best.pt`/`artifacts/` hiện vẫn là `final_syn` (synopsis ON — xem
-> `artifacts/CONTRACT.md` step 41000). Serve-path chính thức của `final` chưa đo lại; số dưới là
-> **checkpoint-path** (run-vs-run, `runs.csv`/`cold_runs.csv`). Sau khi tải best.pt=`final` về:
-> re-export → test_export → retrain ranker (`docs/RANKER.md §9`).
+> ✅ **Re-export DONE (2026-06-17)**: `best.pt`/`artifacts/` giờ là `final` (synopsis OFF — `artifacts/CONTRACT.md`
+> epoch=7 step=31500). Serve-path official của `final` đã đo (`docs/RESULTS.md §3b`). Bảng ablation dưới giữ
+> **checkpoint-path** (run-vs-run, `runs.csv`/`cold_runs.csv`) để so synopsis on/off trên cùng đường đo. Còn lại:
+> retrain ranker trên pool `final` (`docs/RANKER.md §9`).
 
 ## Thiết kế (đã code)
 
@@ -49,8 +49,8 @@ Ablation **sạch** trên Colab: hai run **cùng config v_final** (history_sourc
 
 | run | use_synopsis | synopsis_dim |
 |---|---|---|
-| `final` ★ (config CHỐT) | OFF | — |
-| `final_syn` (= best.pt hiện tại, chờ re-export) | ON | 64 |
+| `final` ★ (config CHỐT, = best.pt/artifacts hiện tại) | OFF | — |
+| `final_syn` (bị bác) | ON | 64 |
 
 Số **checkpoint-path** (run-vs-run; nguồn `runs.csv` warm + `cold_runs.csv` cold @ best_step; serve-path
 chính thức đo lại sau re-export). Δ = ON − OFF (tác động của synopsis; **+** = synopsis giúp).

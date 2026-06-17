@@ -2,7 +2,7 @@
 
 Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`). Baselines so sánh: `docs/BASELINES.md`.
 
-> ⚠️ Số liệu = snapshot **2026-06-11** (`v5_hist64_ep2`). Config đã **chốt `final` (no synopsis, 2026-06-17)** — `best.pt`/`artifacts/` còn là `final_syn`, **pending re-export**; số mới nhất + trạng thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: `docs/RESULTS.md`. Kiến trúc/protocol trong file thì ổn định.
+> ⚠️ Số liệu = snapshot **2026-06-11** (`v5_hist64_ep2`). Config đã **chốt `final` (no synopsis, 2026-06-17)** và **re-export xong** — `best.pt`/`artifacts/` = `final` (serve-path official `docs/RESULTS.md §3b`); còn lại retrain ranker. Số mới nhất + trạng thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: `docs/RESULTS.md`. Kiến trúc/protocol trong file thì ổn định.
 
 ---
 

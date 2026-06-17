@@ -85,28 +85,31 @@ def main() -> None:
     grade_hist = np.zeros(5, dtype=np.int64)
     for s in range(0, len(uids), config.CHUNK):
         chunk = uids[s : s + config.CHUNK]
-        supp_ids, supp_sc, tgt_maps, mask_lists, r_total = [], [], [], [], []
+        supp_ids, supp_sc, tgt_maps, tgt_score_maps, mask_lists, r_total = [], [], [], [], [], []
         for u in chunk:
             ids, sc = uh.history(int(u))
             si, ss, ti, ts = split_support_target(ids, sc, int(u))
             supp_ids.append(si)
             supp_sc.append(ss)
             tgt_maps.append(dict(zip(ti.tolist(), config.grade(ts).tolist())))
+            tgt_score_maps.append(dict(zip(ti.tolist(), ts.tolist())))   # raw score (cho relabel)
             mask_lists.append(np.union1d(si, uh.hard_neg(int(u))).astype(np.int64))
             r_total.append(len(ti))
         U = encode_users(enc, supp_ids, supp_sc,
                          uh.gender_id[chunk], uh.joined_bucket[chunk], cap)
         cand, cos = topk_pool(U, enc.item_cache, mask_lists, config.K_POOL, cold_idx=cold_idx)
         labels = np.zeros_like(cand, dtype=np.int8)
-        for i, tm in enumerate(tgt_maps):
+        tscore = np.zeros_like(cand, dtype=np.int8)
+        for i, (tm, tsm) in enumerate(zip(tgt_maps, tgt_score_maps)):
             labels[i] = [tm.get(int(a), 0) for a in cand[i]]
+            tscore[i] = [tsm.get(int(a), 0) for a in cand[i]]
         keep = (labels > 0).any(axis=1)
         stats = user_stats_from_support(
             supp_sc, np.asarray([ages.get(int(u), np.nan) for u in chunk]))
         cross = cross_features(V, itemfeat, cand, cos, supp_ids, stats)
         frame = build_frame(itemfeat, cand.ravel(), cross)
         writer.add_chunk(chunk, cand, labels, frame, U.numpy(), supp_ids,
-                         np.asarray(r_total), keep=keep)
+                         np.asarray(r_total), keep=keep, target_score=tscore)
         n_groups_in += len(chunk)
         vals, cnts = np.unique(labels[keep], return_counts=True)
         grade_hist[vals] += cnts
