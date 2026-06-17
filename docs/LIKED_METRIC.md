@@ -162,7 +162,10 @@ Các doc dưới chưa phản ánh liked-metric / schema mới; **cố ý để 
   recall/ndcg — chưa có liked; `evaluate()` có param mới `query_scores`.
 - **`TRAIN_DATA.md`** + **`artifacts/CONTRACT.md` (auto-gen, tự đúng sau export)**: `examples/*` và
   `eval_queries_*` giờ có cột `score`.
-- **`RESULTS.md`** + **`PROGRESS.md`**: bảng số chưa có cột liked; lưu ý số retriever/ranker đang ở
-  thế version-mismatch (retriever `v_final` mới vs ranker model `v5` cũ — đã flag ở `EXPERIMENTS.md`).
+- **`RESULTS.md`** + **`PROGRESS.md`**: ✅ bảng **baselines** (§4) ĐÃ có cột liked + baseline tune-on-val
+  (2026-06-17, `docs/BASELINES.md`); bảng retriever/ranker two-stage vẫn chưa có cột liked. Lưu ý số
+  retriever/ranker đang ở thế version-mismatch (retriever `v_final` mới vs ranker model `v5` cũ).
+- **`BASELINES.md`**: ✅ ĐÃ cập nhật — liked-metric mọi baseline (harness `_eval.py`) + MF/itemknn/content
+  tune-on-val. liked baseline = report-only, ranking không đổi (sanity gate binary pass).
 - **`PROJECT_STRUCTURE.md`**: firewall contract `artifacts/eval_queries_*` mô tả `[user_idx,
   anime_idx]` — nay thêm `score`.

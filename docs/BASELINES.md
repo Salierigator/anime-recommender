@@ -2,9 +2,12 @@
 
 Doc tổng hợp cho `retriever/baselines/` — **mỗi baseline hoạt động thế nào, vì sao chọn, đọc số ra sao**. Baselines phía ranker (linear logistic, NN DIN) nằm ở `docs/RANKER.md §7` — không lặp ở đây.
 
-> ⏳ **PENDING — baselines đang re-run (2026-06-17)**: `retriever/baselines/` đang tune/đo lại (itemknn đổi K từ 200 → đang thử K=50, content IDF, MF rerun, +liked-metric). **Mọi số trong file + RESULTS.md §4 là bản cũ 2026-06-11, KHÔNG trích cho báo cáo cho đến khi re-run xong.**
->
-> ⚠️ Số liệu trong file = snapshot **2026-06-11** (đo trên TEST, protocol v2). Baselines tất định theo data — chỉ đổi nếu re-run prep; số two-tower để so thì còn đổi khi tune tiếp → bảng so sánh mới nhất: root `PROGRESS.md` + `docs/RESULTS.md` (bản đồ nguồn mọi con số). File kết quả gốc: `retriever/baselines/*.txt`.
+> ⚠️ Số liệu = snapshot **2026-06-17** (đo trên TEST, protocol v2). Cập nhật 2026-06-17: (1) thêm
+> **liked-metric** (liked-recall/liked-ndcg, report-only — `docs/LIKED_METRIC.md`) cho mọi baseline;
+> (2) **HP-tune trên VAL** cho 3 baseline personalized (MF / itemknn / content) — chọn config theo val
+> rồi report test (§3). Baselines không personalized (random/popular/meta_popular) tất định theo data,
+> số binary **không đổi** so với 2026-06-11 (đã dùng làm sanity gate cho liked plumbing). File kết quả
+> gốc: `retriever/baselines/*.txt`. Bảng so sánh mới nhất: `PROGRESS.md` + `docs/RESULTS.md`.
 
 ---
 
@@ -51,13 +54,35 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 ### 3.5 `itemknn.py` — ItemKNN (item-item cosine, warm; bar CF "nhẹ")
 
-- "Train" = dựng ma trận user×item binary từ TRAIN positives → similarity item-item cosine, giữ top-K=200 neighbor mỗi item (`implicit.CosineRecommender` — đếm co-occurrence, không học per-user).
+- "Train" = dựng ma trận user×item binary từ TRAIN positives → similarity item-item cosine, giữ top-K neighbor mỗi item (`implicit.CosineRecommender` — đếm co-occurrence, không học per-user).
 - Score user lạ: `score(i) = Σ_{j∈history} cosine(i, j)` — hợp lệ với cold-user vì chỉ cần history.
+- **Tune (2026-06-17)**: sweep K ∈ {50,100,200,500,1000} trên val (recall@200) → **K=50 thắng** (val .6583, so với .5698 ở K=200 cũ). K nhỏ = neighborhood sạch hơn, đẩy mạnh recall sâu. Số test §5 là K=50.
 
 ### 3.6 `mf.py` — MF ALS + fold-in (**bar chính warm**)
 
-- Train **implicit ALS** (factors=64, iterations=15, reg=.05) trên ma trận user×item binary từ TRAIN positives → `item_factors`.
+- Train **implicit ALS** trên ma trận user×item binary từ TRAIN positives → `item_factors`.
 - Cold-user: `user_factors` của eval user không tồn tại → **fold-in**: giải lại user-vector từ support history bằng đúng công thức ALS (`model.recalculate_user`) — không học tham số per-user nào của test. Score = `u · item_factorsᵀ`.
+- **Tune (2026-06-17)**: TRAIN có ~67.5M interaction → 1 full fit ~4'(factors=64)–9'(factors=128), quá tốn để sweep nhiều combo. Quy trình: **coarse-sweep factors∈{64,128} × alpha∈{1,10,40}** (reg=.05, iters=15) trên **subset 15k user ngẫu nhiên** (fold-in chỉ cần item_factors → eval val đầy đủ vẫn hợp lệ), rồi **refit config thắng trên FULL train** report test. Hạ nhiệt CPU: `num_threads=4` + `OPENBLAS_NUM_THREADS=1` (tránh oversubscribe BLAS↔implicit). factors=256 bị bỏ (full refit ~17' — vượt budget; mở lại nếu cần capacity cao hơn).
+- **Per-axis report** (chốt với user 2026-06-17): MF báo ở config tốt nhất MỖI trục — **ndcg-optimal** (factors=128, α=1) và **recall-optimal** (factors=128, α=10). Phát hiện chính: alpha (confidence weighting) đánh đổi head↔tail — α cao → recall sâu hơn nhưng ndcg@10 tụt; **config gốc cũ (factors=64, α=1 mặc định) KHÔNG ở mức tốt nhất** — chỉ cần factors 64→128 (α=1) đã vượt nó cả 2 trục.
+
+- **Cơ chế đánh đổi recall↔ndcg (phân tích cho đồ án)**: ALS tối thiểu `Σ c_ui·(p_ui − xᵤ·yᵢ)²` với confidence `c_ui = 1 + α·r_ui`; data binary → item đã xem confidence `1+α`, chưa xem `1`. **α = tỉ lệ trọng số "fit positive đã quan sát" vs "tôn trọng các số 0"**:
+  - α **thấp**: entry-0 còn nặng → factorization kéo về cấu trúc low-rank **toàn cục** (gradient *popularity × chất lượng*), đặt đúng title hay-phổ-biến lên đỉnh → **ndcg@10/r@10 cao** nhưng under-fit niche → recall sâu thấp.
+  - α **cao**: positive thống trị loss → fit gắt sở thích riêng từng user → kéo nhiều item cụ thể vào top-200 (**recall@200 ↑**) nhưng top-10 mất prior toàn cục → **ndcg@10 tụt**. (Tương tự bias–variance.)
+  - `factors` thì **không** đánh đổi — dung lượng thuần, mã hoá đồng thời global + niche → cải thiện cả 2 (f128 > f64 mọi α) tới khi diminishing returns.
+- **Có config tối ưu cả 2 không?** Fine-sweep α tại f128 (val, subset 15k) → đánh đổi **không gay gắt như grid thô**: ndcg@10 đỉnh α≈2 (.709) rồi giảm dốc; recall@200 đỉnh α≈7 (.742) nhưng **đỉnh phẳng** (α 3–10 ~.735–.742). ⇒ **α≈2–3 = sweet spot gần-Pareto** (ndcg@10 vẫn đỉnh + recall@200 ~98% max). Đánh đổi chỉ "cắn" ở cực đoan (α 3→10: +.007 recall đổi −.07 ndcg = trao đổi tồi). Việc tách per-axis phần lớn là **artifact của grid α∈{1,10,40}** (bỏ qua dải 2–3). Số fine-sweep:
+
+  | α (f128, val) | r@10 | r@100 | r@200 | ndcg@10 |
+  |---|---|---|---|---|
+  | 1 | .2079 | .5938 | .7109 | .7052 |
+  | **2** | **.2115** | .6103 | .7284 | **.7093** |
+  | **3** | .2111 | .6155 | .7354 | .7031 |
+  | 5 | .2075 | .6179 | .7405 | .6846 |
+  | 7 | .2029 | .6165 | **.7418** | .6633 |
+  | 10 | .1964 | .6124 | .7412 | .6339 |
+  | 15 | .1860 | .6040 | .7376 | .5867 |
+  | 20 | .1769 | .5964 | .7330 | .5458 |
+
+  (Số test §5 vẫn báo per-axis α1/α10 theo chốt với user; muốn 1 bar cân bằng → refit full f128/α3.)
 - Đây là CF matrix-factorization chuẩn, mạnh nhất trong bộ — two-stage (retriever+ranker) phải thắng nó thì kiến trúc mới đáng.
 
 ## 4. Cold slice — method nào đo được
@@ -71,31 +96,40 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 Đây không phải thiếu sót đo đạc mà là **kết quả cấu trúc**: CF thuần không thể gợi ý item chưa có interaction — chính là lý do two-tower (content path + id→OOV backoff) có lợi thế cold. Các file `.txt` ghi rõ "N/A by construction", không bịa số 0.
 
-## 5. Kết quả hiện tại (TEST, snapshot 2026-06-11)
+## 5. Kết quả hiện tại (TEST, snapshot 2026-06-17)
 
-**Warm** (mask seen−query, history cap 1024, ~14.25k users):
+**Warm** (mask seen−query, history cap 1024, ~14.25k users). Cột `lr@k`/`lndcg@10` = liked-metric
+(report-only; `n_users_liked` = 12,638 mọi hàng warm — user có ≥1 liked query):
 
-| method | r@10 | r@100 | r@200 | r@500 | ndcg@10 |
-|---|---|---|---|---|---|
-| random | .0005 | .0045 | .0093 | .0230 | .0025 |
-| content (mean+IDF) | .0368 | .1577 | .2344 | .3779 | .0945 |
-| meta_popular | .0848 | .3198 | .4387 | .6156 | .3362 |
-| popular | .0865 | .3321 | .4516 | .6279 | .3527 |
-| itemknn (K=200) | .1211 | .4105 | .5722 | .7979 | .4685 |
-| **MF ALS-64 fold-in** | **.1951** | **.5759** | **.6989** | **.8352** | **.6771** |
+| method | r@10 | r@100 | r@200 | r@500 | ndcg@10 | lr@100 | lr@200 | lndcg@10 |
+|---|---|---|---|---|---|---|---|---|
+| random | .0005 | .0044 | .0088 | .0219 | .0022 | .0046 | .0092 | .0011 |
+| content (mean+IDF) | .0368 | .1577 | .2344 | .3779 | .0945 | .1580 | .2356 | .0495 |
+| meta_popular | .0848 | .3198 | .4387 | .6156 | .3362 | .4085 | .5367 | .2456 |
+| popular | .0865 | .3321 | .4516 | .6279 | .3527 | .4309 | .5568 | .2629 |
+| itemknn (K=50) | .1177 | .4976 | .6592 | .8231 | .4638 | .5875 | .7403 | .3395 |
+| **MF ndcg-opt** (f128/α1) | **.2087** | **.5954** | **.7136** | **.8405** | **.7027** | **.6960** | **.7986** | **.5052** |
+| **MF recall-opt** (f128/α10) | **.1982** | **.6223** | **.7511** | **.8797** | **.6374** | **.7213** | **.8328** | **.4442** |
 
-**Cold** (test_cold, full-catalog): content r@100 .1320 / r@200 .2177 / hit@500 .3784 · meta_popular r@200 .0999 · random r@200 .0086 · popular/itemknn/mf = N/A.
+**Cold** (test_cold, full-catalog): content r@100 .1320 / r@200 .2177 / hit@500 .3784 (liked: lr@200 .2103 / lndcg@10 .0219) · meta_popular r@200 .0999 / hit@500 .1559 (lr@200 .1466) · random r@200 .0086 · popular/itemknn/mf = N/A.
 
-Đọc số (so với two-tower hiện tại — chi tiết `PROGRESS.md`):
-- **Warm**: MF là bar thật (r@200 .6989, ndcg@10 .6771). Two-tower một mình (`v5_hist64_ep2`: r@200 .6608, ndcg@10 .5135 — số checkpoint-path; serve-path .6524/.5155, phân biệt 2 biến thể: `docs/RESULTS.md §2`) còn thua MF — nhưng head precision là việc của ranker: **two-stage** (retriever + xendcg) đạt test ndcg@10 **.7074 > .6771** → kiến trúc 2-stage vượt bar.
-- **Cold**: two-tower r@200 .3881 (val_cold) ≈ **1.8–2.2×** content (.2177 test_cold) trong khi MF/KNN/popular = 0 — lợi thế cấu trúc của two-tower, không model cổ điển nào trong bộ đạt được cả hai mặt warm + cold.
+Đọc số (so với two-tower hiện tại — chi tiết `PROGRESS.md` / `docs/RESULTS.md`):
+- **Warm — MF là bar RẤT mạnh sau tune**: recall-opt MF r@200 **.7511**, ndcg-opt MF ndcg@10 **.7027**.
+  Config gốc cũ (f64/α1: .6989 / .6771) bị f128/α1 vượt cả 2 trục → MF cũ chưa ở mức tốt nhất.
+- **So với two-stage** (retriever + xendcg, test ndcg@10 **.7074**): vẫn **> MF ndcg-opt .7027** nhưng
+  biên rất sát (+.0047, trước đây +.0303 vs MF cũ .6771). Ở **tail**, MF mạnh hơn two-stage rõ rệt
+  (r@200 .7511 vs two-stage .6524, kẹt trần pool K=200) — tail recall là việc của retriever. ⇒ Lợi thế
+  thật của 2-stage **không** nằm ở "thắng MF trên warm" (giờ sát/thua tail) mà ở **cold-start**:
+- **Cold**: two-tower r@200 .3881 (val_cold) ≈ **1.8–2.2×** content (.2177 test_cold) trong khi MF/KNN/popular = **0 (N/A by construction)** — đây là claim cấu trúc mạnh nhất: không model CF cổ điển nào gợi ý được anime mới, kể cả MF đã tune.
+- liked-metric: warm `lr@k` thường > `recall` binary (item user *thật sự thích* được surface tốt hơn item chỉ-tương-tác); MF ndcg-opt lndcg@10 .5052 cao nhất bộ.
 - recall@K bị trần lý thuyết khi user có nhiều query hơn K — đọc `docs/DATA_SPLIT.md §8` trước khi so số tuyệt đối ở K nhỏ.
 
 ## 6. Chạy lại
 
 ```bash
 venv/bin/python retriever/baselines/<rand|popular|meta_popular|content_based|itemknn|mf>.py
-# mf/itemknn có --smoke (subset 200k user) để thử nhanh; output ghi đè *.txt cùng thư mục
+# mf/itemknn có --smoke (grid + subset rút gọn) để thử nhanh; output ghi đè *.txt cùng thư mục
+# mf.py nặng (~17' full run, 2 refit per-axis) → nên chạy nền; đã cap num_threads=4 cho đỡ nóng máy
 ```
 
-Mọi script đọc `retriever/train-data/` qua `src/` (import flat) — chạy sau khi prep xong; không cần GPU (MF/KNN dùng `implicit` trên CPU).
+Mọi script đọc `retriever/train-data/` qua `src/` (import flat) — chạy sau khi prep xong; không cần GPU (MF/KNN dùng `implicit` trên CPU). 3 baseline personalized tune-on-val: lựa chọn HP ghi trong header `.txt` + section "val sweep".

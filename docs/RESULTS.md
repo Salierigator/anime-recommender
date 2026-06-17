@@ -86,18 +86,21 @@ synopsis OFF thắng cold rõ rệt (recall@200 **+.115**, liked_recall@200 +.14
 
 ## 4. Baselines retriever (TEST — chi tiết phương pháp: `docs/BASELINES.md`)
 
-> ⏳ **PENDING — baselines đang re-run** (`retriever/baselines/`): itemknn đổi K (K=200 → đang thử K=50), content IDF, MF rerun, +liked-metric. Số dưới là bản **cũ (2026-06-11)** giữ tạm — KHÔNG trích cho đến khi re-run xong.
+> Snapshot **2026-06-17**: +liked-metric mọi baseline; 3 baseline personalized (MF/itemknn/content) **tune-on-val** (chi tiết `docs/BASELINES.md §3`). Số binary của random/popular/meta_popular không đổi vs 2026-06-11 (sanity gate). Cột `lr@k`/`lndcg@10` = liked (report-only, n_users_liked=12,638 warm).
 
-| method | r@10 | r@100 | r@200 | r@500 | ndcg@10 |
-|---|---|---|---|---|---|
-| random | .0005 | .0045 | .0093 | .0230 | .0025 |
-| content (mean+IDF) | .0368 | .1577 | .2344 | .3779 | .0945 |
-| meta_popular | .0848 | .3198 | .4387 | .6156 | .3362 |
-| popular | .0865 | .3321 | .4516 | .6279 | .3527 |
-| itemknn (K=200) | .1211 | .4105 | .5722 | .7979 | .4685 |
-| **MF ALS-64 fold-in** (bar) | **.1951** | **.5759** | **.6989** | **.8352** | **.6771** |
+| method | r@10 | r@100 | r@200 | r@500 | ndcg@10 | lr@100 | lr@200 | lndcg@10 |
+|---|---|---|---|---|---|---|---|---|
+| random | .0005 | .0044 | .0088 | .0219 | .0022 | .0046 | .0092 | .0011 |
+| content (mean+IDF) | .0368 | .1577 | .2344 | .3779 | .0945 | .1580 | .2356 | .0495 |
+| meta_popular | .0848 | .3198 | .4387 | .6156 | .3362 | .4085 | .5367 | .2456 |
+| popular | .0865 | .3321 | .4516 | .6279 | .3527 | .4309 | .5568 | .2629 |
+| itemknn (K=50) | .1177 | .4976 | .6592 | .8231 | .4638 | .5875 | .7403 | .3395 |
+| **MF ndcg-opt** (f128/α1) | **.2087** | **.5954** | **.7136** | **.8405** | **.7027** | **.6960** | **.7986** | **.5052** |
+| **MF recall-opt** (f128/α10) | **.1982** | **.6223** | **.7511** | **.8797** | **.6374** | **.7213** | **.8328** | **.4442** |
 
-Cold (test_cold): content r@100 .1320 / r@200 .2177 / hit@500 .3784 · meta_popular r@200 .0999 · random r@200 .0086 · popular/itemknn/mf = **N/A by construction**.
+MF báo **per-axis** (config tốt nhất mỗi trục; sweep f∈{64,128}×α∈{1,10,40}, reg.05, iter15, refit FULL). MF gốc cũ f64/α1 (.6989/.6771) bị f128/α1 vượt cả 2 trục → đã loại.
+
+Cold (test_cold): content r@100 .1320 / r@200 .2177 / hit@500 .3784 (lr@200 .2103) · meta_popular r@200 .0999 / hit@500 .1559 (lr@200 .1466) · random r@200 .0086 · popular/itemknn/mf = **N/A by construction**.
 
 ## 5. Ranker — so sánh model (VAL, two-stage pool 200, 14.029 users)
 
@@ -130,7 +133,7 @@ Nguồn: `ranker/models/<run>/{results.txt,row.json}`. Mỗi model lấy α tố
 | **two-stage** | **.2137** | **.4698** | **.5811** | .6524 | **.7074** | **.5892** | **.5917** | .6090 |
 | Δ | +.0621 | +.0851 | +.0651 | 0 (trần pool) | **+.1919** | +.1347 | +.1127 | +.0781 |
 
-So bar MF ALS (full catalog, test): ndcg@10 two-stage **.7074 > .6771** MF → two-stage vượt bar ở head precision (so sánh hợp lệ — top-10 của two-stage cũng là top-10 full-catalog, xem §1). Trung thực ở tail: r@200 two-stage .6524 (kẹt trần pool) **< MF .6989**, r@500 two-tower .8164 < MF .8352 — recall tail vẫn là việc của retriever (tune tiếp / nâng K), không phải ranker.
+So bar MF ALS **đã tune** (full catalog, test — `docs/BASELINES.md §5`): ndcg@10 two-stage **.7074 > .7027** MF ndcg-opt (f128/α1) → two-stage vẫn vượt bar head-precision nhưng **biên rất sát** (+.0047; so với MF cũ under-tuned .6771 thì +.0303 — đừng dùng số cũ). Ở tail, MF tune mạnh hơn rõ: r@200 two-stage .6524 (kẹt trần pool) **< MF recall-opt .7511**, r@500 two-tower .8164 < MF .8797 — recall tail là việc của retriever (tune tiếp / nâng K). ⚠️ **Hệ quả cho đồ án**: warm-only, two-stage chỉ *nhỉnh* MF ở ndcg@10 và *thua* tail → lợi thế thuyết phục nhất của kiến trúc 2-stage là **cold-start** (§7, "Anime mới"): MF/KNN = 0 by construction còn two-tower r@200 cold .3881 ≈ 1.8–2.2× content. Nên neo narrative vào cold + khả năng kết hợp recall(retriever)+precision(ranker)+cold, không chỉ "thắng MF warm".
 
 ## 7. Cold — kênh serve (quyết định: tách kênh, `docs/RANKER.md §7`)
 
