@@ -69,20 +69,19 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
   - α **thấp**: entry-0 còn nặng → factorization kéo về cấu trúc low-rank **toàn cục** (gradient *popularity × chất lượng*), đặt đúng title hay-phổ-biến lên đỉnh → **ndcg@10/r@10 cao** nhưng under-fit niche → recall sâu thấp.
   - α **cao**: positive thống trị loss → fit gắt sở thích riêng từng user → kéo nhiều item cụ thể vào top-200 (**recall@200 ↑**) nhưng top-10 mất prior toàn cục → **ndcg@10 tụt**. (Tương tự bias–variance.)
   - `factors` thì **không** đánh đổi — dung lượng thuần, mã hoá đồng thời global + niche → cải thiện cả 2 (f128 > f64 mọi α) tới khi diminishing returns.
-- **Có config tối ưu cả 2 không?** Fine-sweep α tại f128 (val, subset 15k) → đánh đổi **không gay gắt như grid thô**: ndcg@10 đỉnh α≈2 (.709) rồi giảm dốc; recall@200 đỉnh α≈7 (.742) nhưng **đỉnh phẳng** (α 3–10 ~.735–.742). ⇒ **α≈2–3 = sweet spot gần-Pareto** (ndcg@10 vẫn đỉnh + recall@200 ~98% max). Đánh đổi chỉ "cắn" ở cực đoan (α 3→10: +.007 recall đổi −.07 ndcg = trao đổi tồi). Việc tách per-axis phần lớn là **artifact của grid α∈{1,10,40}** (bỏ qua dải 2–3). Số fine-sweep:
+- **Có config tối ưu cả 2 không?** Fine-sweep α tại f128 (val, subset 15k). Số fine-sweep:
 
   | α (f128, val) | r@10 | r@100 | r@200 | ndcg@10 |
   |---|---|---|---|---|
-  | 1 | .2079 | .5938 | .7109 | .7052 |
-  | **2** | **.2115** | .6103 | .7284 | **.7093** |
-  | **3** | .2111 | .6155 | .7354 | .7031 |
-  | 5 | .2075 | .6179 | .7405 | .6846 |
-  | 7 | .2029 | .6165 | **.7418** | .6633 |
-  | 10 | .1964 | .6124 | .7412 | .6339 |
+  | **1** | **.2115** | .6103 | .7109 | **.7093** |
+  | 2 | .2079 | .5938 | .7284 | .7052 |
+  | 3 | .2111 | .6155 | .7354 | .7031 |
+  | 5 | .2075 | **.6179** | .7405 | .6846 |
+  | 7 | .2029 | .6165 | .7412 | .6633 |
+  | 10 | .1964 | .6124 | **.7418** | .6339 |
   | 15 | .1860 | .6040 | .7376 | .5867 |
   | 20 | .1769 | .5964 | .7330 | .5458 |
 
-  (Số test §5 vẫn báo per-axis α1/α10 theo chốt với user; muốn 1 bar cân bằng → refit full f128/α3.)
 - Đây là CF matrix-factorization chuẩn, mạnh nhất trong bộ — two-stage (retriever+ranker) phải thắng nó thì kiến trúc mới đáng.
 
 ## 4. Cold slice — method nào đo được
@@ -108,8 +107,8 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 | meta_popular | .0848 | .3198 | .4387 | .6156 | .3362 | .4085 | .5367 | .2456 |
 | popular | .0865 | .3321 | .4516 | .6279 | .3527 | .4309 | .5568 | .2629 |
 | itemknn (K=50) | .1177 | .4976 | .6592 | .8231 | .4638 | .5875 | .7403 | .3395 |
-| **MF ndcg-opt** (f128/α1) | **.2087** | **.5954** | **.7136** | **.8405** | **.7027** | **.6960** | **.7986** | **.5052** |
-| **MF recall-opt** (f128/α10) | **.1982** | **.6223** | **.7511** | **.8797** | **.6374** | **.7213** | **.8328** | **.4442** |
+| **MF ndcg-opt** (f128/α1) | **.2087** | .5954 | .7136 | .8405 | **.7027** | .6960 | .7986 | **.5052** |
+| **MF recall-opt** (f128/α10) | .1982 | **.6223** | **.7511** | **.8797** | .6374 | **.7213** | **.8328** | .4442 |
 
 **Cold** (test_cold, full-catalog): content r@100 .1320 / r@200 .2177 / hit@500 .3784 (liked: lr@200 .2103 / lndcg@10 .0219) · meta_popular r@200 .0999 / hit@500 .1559 (lr@200 .1466) · random r@200 .0086 · popular/itemknn/mf = N/A.
 
