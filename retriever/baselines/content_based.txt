@@ -1,6 +1,8 @@
-# Content-based baseline (mean + IDF) — split=test — protocol v2 (mask seen−query, history cap=1024)
-# generated 2026-06-10T21:43:31  device=mps  content_dim=423
+# Content-based baseline (mean, +IDF) — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-17T00:13:13  device=mps  content_dim=423, use_idf=True (selected on val)
 # candidates (finite logq): 22,821
+
+## val sweep (recall@200): idf=True: 0.234692  idf=False: 0.201676
 
 ## warm (test)  (users: 14,250)
 recall@10   = 0.036801
@@ -14,6 +16,19 @@ ndcg@50     = 0.103820
 ndcg@100    = 0.122072
 ndcg@200    = 0.153691
 ndcg@500    = 0.211798
+
+# liked-metric (report-only; users w/ >=1 liked query: 12,638)
+liked_recall@10   = 0.037043
+liked_recall@50   = 0.104200
+liked_recall@100  = 0.157978
+liked_recall@200  = 0.235612
+liked_recall@500  = 0.383289
+
+liked_ndcg@10     = 0.049489
+liked_ndcg@50     = 0.070530
+liked_ndcg@100    = 0.089819
+liked_ndcg@200    = 0.116488
+liked_ndcg@500    = 0.162651
 
 ## cold (test_cold, full-catalog)  (users: 8,510, pairs: 145,691)
 recall@10   = 0.026717
@@ -33,4 +48,17 @@ hitrate@50  = 0.075440
 hitrate@100 = 0.127297
 hitrate@200 = 0.210569
 hitrate@500 = 0.378404
+
+# liked-metric (report-only; users w/ >=1 liked query: 6,341)
+liked_recall@10   = 0.027122
+liked_recall@50   = 0.077932
+liked_recall@100  = 0.127462
+liked_recall@200  = 0.210280
+liked_recall@500  = 0.394801
+
+liked_ndcg@10     = 0.021913
+liked_ndcg@50     = 0.039195
+liked_ndcg@100    = 0.052898
+liked_ndcg@200    = 0.072800
+liked_ndcg@500    = 0.110683
 

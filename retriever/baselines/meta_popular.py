@@ -36,16 +36,17 @@ def members_scores(cfg, N) -> torch.Tensor:
 
 
 def main():
-    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold, qs_warm, qs_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
     pop = members_scores(cfg, N).to(cfg.device)
 
     def score_fn(u, hist):
         return pop.unsqueeze(0).expand(len(u), N).clone()
 
-    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm,
+                                         query_scores=qs_warm)
     out_c, n_c, _ = _eval.rank_eval(cfg, users, q_cold, logq, score_fn, cfg.eval_ks, m_cold,
-                                    pooled=True)
+                                    pooled=True, query_scores=qs_cold)
 
     lines = _eval.header("Meta-Popular baseline (log1p members, metadata)", cfg, SPLIT, n_cand)
     lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)

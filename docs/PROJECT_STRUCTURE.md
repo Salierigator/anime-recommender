@@ -2,7 +2,7 @@
 
 Doc kiến trúc sống: **cây thư mục + luồng hoạt động end-to-end** của recommender. File này giữ context tổng thể; chi tiết từng chặng nằm ở `docs/` và `CLAUDE.md` riêng trong mỗi mảng.
 
-> ⚠️ Số liệu trong file = snapshot **2026-06-11** (retriever `v5_hist64_ep2`, ranker `xendcg_lr05_l63`). Retriever còn tune tiếp trên Colab → best.pt và các con số có thể đổi; số mới nhất luôn ở root `PROGRESS.md`. Kiến trúc/protocol trong file thì ổn định.
+> ⚠️ Số liệu trong file = snapshot **2026-06-11** (retriever `v5_hist64_ep2`, ranker `xendcg_lr05_l63`). Retriever đã **chốt config `final` (no synopsis, 2026-06-17)** nhưng `best.pt`/`artifacts/` còn là `final_syn` → **pending re-export** + retrain ranker; số mới nhất + trạng thái: root `PROGRESS.md`. Kiến trúc/protocol trong file thì ổn định.
 
 ---
 
@@ -110,6 +110,6 @@ Schema chi tiết + version: **`artifacts/CONTRACT.md`** (tự sinh bởi export
 
 > Trạng thái chi tiết + số liệu + việc tiếp theo: **root `PROGRESS.md`** (luôn mới hơn file này).
 
-- **Retriever** *(✅ pipeline hoàn thành)*: data + protocol + model + baselines + export đều chạy và verify. Best hiện tại: `v5_hist64_ep2`; còn tune thêm epoch/knob trên Colab — mỗi lần có best.pt mới: re-export + chạy lại loop ranker (`docs/RANKER.md §9`).
+- **Retriever** *(✅ pipeline hoàn thành)*: data + protocol + model + baselines + export đều chạy và verify. **Chốt config `final` (no synopsis, 2026-06-17)** — synopsis test on/off bị bác vì regress cold (`docs/SYNOPSIS_EMB.md`). `best.pt`/`artifacts/` còn là `final_syn` → **pending**: re-export + retrain ranker (`docs/RANKER.md §9`).
 - **Ranker** *(✅ CHỐT 2026-06-11)*: `artifacts/ranker.txt` = production (xendcg α=1, test ndcg@10 .7074, vượt bar MF ALS .6771); cold tách kênh serve. Còn mở (không chặn): test_cold final exam (chấm 1 lần lúc chốt toàn pipeline), ablation K=500.
 - **Service** *(🟨 backend CLI xong)*: `recommend.py` serve đúng `cold_serving` (main list rerank warm + section "Anime mới" cosine), 3 nguồn user (dataset / live MAL / file). **Còn lại: FastAPI wrap + frontend** (`service/CLAUDE.md §5`).

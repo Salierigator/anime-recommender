@@ -4,7 +4,9 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 
 > ⚠️ Snapshot **2026-06-11**: retriever `v5_hist64_ep2` (2 epoch) + ranker `xendcg_lr05_l63`. Retriever còn tune trên Colab → mỗi lần best.pt đổi, TOÀN BỘ số ở đây đổi theo (chạy lại loop `docs/RANKER.md §9` rồi cập nhật file này). Trạng thái mới nhất: root `PROGRESS.md`.
 >
-> 🔴 **STALE (2026-06-16)**: best.pt đã đổi sang **`v_final`** (`history_source=embed`, `train_hist_len=128`, 10 epoch, **synopsis ON dim 64** — ablation xác nhận warm cải thiện, `docs/SYNOPSIS_EMB.md`). MỌI số retriever/two-stage bên dưới (dựa trên `v5_hist64_ep2`) chưa cập nhật theo best.pt mới — cần re-measure serve-path + retrain ranker (`docs/RANKER.md §9`) trước khi trích dẫn. (Cold ablation syn on/off: chờ số.)
+> 🔴 **CHỐT `final` (no synopsis) — 2026-06-17**: config retriever cuối = **`final`** (`history_source=embed`, `train_hist_len=128`, 10 epoch, d128, τ.07, logQ α=1, **synopsis OFF**), **ưu tiên cold**. Synopsis (`final_syn`) đã test on/off và **bị bác** (warm↑ nhưng cold↓ — `docs/SYNOPSIS_EMB.md`). Số warm/cold của `final`: **§3b** dưới (checkpoint-path).
+>
+> ⚠️ **PENDING re-export**: `best.pt`/`artifacts/`/`eval_reference.json` hiện vẫn là **`final_syn`** (`CONTRACT.md` step 41000), `ranker.txt` còn ở `v5_hist64_ep2` cũ hơn. MỌI số serve-path/two-stage §3–§8 dựa trên `v5_hist64_ep2` → **STALE**; serve-path chính thức của `final` **chưa đo**. Khi tải best.pt=`final`: re-export → test_export → retrain ranker (`docs/RANKER.md §9`) rồi cập nhật file này.
 
 ---
 
@@ -35,9 +37,11 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 
 Serve-path warm thấp hơn checkpoint-path ~0.5–1 điểm (vd test r@200 .6608 → .6524) vì 1.142 row H từ noise-vector trở thành content-vector "hợp lý" → distractor mạnh hơn. Đây là chủ đích: số phải khớp cái user thật nhìn thấy.
 
+> ⚠️ Số `final` ở **§3b** hiện là **checkpoint-path** (artifacts vẫn là `final_syn`) → serve-path official của `final` chưa tồn tại; đo lại sau re-export. Số serve-path "chính thức" §3/§6/§7 vẫn là `v5_hist64_ep2` (STALE).
+
 Ngoài ra khi đọc recall@K nhỏ: có **trần lý thuyết** do R > K (warm test trần r@10 ≈ .408, r@200 ≈ .993 — `docs/DATA_SPLIT.md §8`); và two-stage có **trần pool** r@200 = .6505 val / .6524 test (`ranker_meta.json::pool_ceiling`).
 
-## 3. Retriever — two-tower `v5_hist64_ep2` (serve-path, full catalog)
+## 3. Retriever — two-tower `v5_hist64_ep2` (serve-path, full catalog) 🔴 STALE (config cũ; final = §3b)
 
 Config thắng (nguồn: PROGRESS + CONTRACT): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, logq_alpha=1, history_source=cache, history_pool=mean, **train_hist_len=64**, id_dropout=.1, bs=8192, 2 epoch (Colab A100). Checkpoint: epoch=1, step=16000.
 
@@ -58,7 +62,31 @@ So run-vs-run v5 (checkpoint-path, WARM TEST, Colab — chỉ để thấy lever
 | v5_itemid128_ep2 | control (hist32) | .1556 | .6526 | .5072 |
 | **v5_hist64_ep2** ★ | train_hist_len=64 | .1582 | .6608 | .5135 |
 
+## 3b. Retriever final = `final` (no synopsis) — checkpoint-path + cold ⏳ serve-path chờ re-export
+
+Config CHỐT (2026-06-17): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, logq_alpha=1, **history_source=embed**, history_pool=mean, **train_hist_len=128**, id_dropout=.15, bs=16384, **10 epoch**, **synopsis OFF**. best_step 31500.
+
+> ⚠️ Số dưới là **checkpoint-path** (run-vs-run, nguồn `runs.csv`/`cold_runs.csv` row `final`/`final_syn`). `artifacts/best.pt` hiện vẫn `final_syn` → **serve-path chính thức của `final` CHƯA đo** (sẽ thấp hơn ~0.5–1đ, xem §2). Số serve-path official + two-stage cập nhật sau re-export + retrain ranker.
+
+**Warm (test) — ablation synopsis OFF (`final`) vs ON (`final_syn`):**
+
+| run | recall@100 | recall@200 | ndcg@10 | liked_recall@200 | liked_ndcg@10 |
+|---|---|---|---|---|---|
+| **`final` (OFF)** ★ | .5462 | .6852 | .4242 | .7754 | .3145 |
+| `final_syn` (ON, bị bác) | .5580 | .6949 | .4886 | .7835 | .3603 |
+
+**Cold (val_cold, 8.388 user, H→OOV) — lý do chốt OFF:**
+
+| run | recall@100 | recall@200 | liked_recall@200 | honly_recall@200 | ndcg@10 |
+|---|---|---|---|---|---|
+| **`final` (OFF)** ★ | .3374 | .4664 | .5387 | .8234 | .1398 |
+| `final_syn` (ON, bị bác) | .2546 | .3515 | .3905 | .7576 | .1494 |
+
+synopsis OFF thắng cold rõ rệt (recall@200 **+.115**, liked_recall@200 +.148) trong khi chỉ kém warm chút (recall@200 −.010) — head-precision warm là việc của ranker. Vì cold serve = cosine trực tiếp (tách kênh, §7), cold gain chảy thẳng ra "Anime mới". Ablation đầy đủ + cơ chế: `docs/SYNOPSIS_EMB.md`; loss ablation (logQ/τ/β/m_hardneg): `docs/EXPERIMENTS.md §4`. (test_cold = final exam, **chưa chấm**.)
+
 ## 4. Baselines retriever (TEST — chi tiết phương pháp: `docs/BASELINES.md`)
+
+> ⏳ **PENDING — baselines đang re-run** (`retriever/baselines/`): itemknn đổi K (K=200 → đang thử K=50), content IDF, MF rerun, +liked-metric. Số dưới là bản **cũ (2026-06-11)** giữ tạm — KHÔNG trích cho đến khi re-run xong.
 
 | method | r@10 | r@100 | r@200 | r@500 | ndcg@10 |
 |---|---|---|---|---|---|

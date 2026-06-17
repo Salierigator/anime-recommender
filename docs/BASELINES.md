@@ -2,6 +2,8 @@
 
 Doc tổng hợp cho `retriever/baselines/` — **mỗi baseline hoạt động thế nào, vì sao chọn, đọc số ra sao**. Baselines phía ranker (linear logistic, NN DIN) nằm ở `docs/RANKER.md §7` — không lặp ở đây.
 
+> ⏳ **PENDING — baselines đang re-run (2026-06-17)**: `retriever/baselines/` đang tune/đo lại (itemknn đổi K từ 200 → đang thử K=50, content IDF, MF rerun, +liked-metric). **Mọi số trong file + RESULTS.md §4 là bản cũ 2026-06-11, KHÔNG trích cho báo cáo cho đến khi re-run xong.**
+>
 > ⚠️ Số liệu trong file = snapshot **2026-06-11** (đo trên TEST, protocol v2). Baselines tất định theo data — chỉ đổi nếu re-run prep; số two-tower để so thì còn đổi khi tune tiếp → bảng so sánh mới nhất: root `PROGRESS.md` + `docs/RESULTS.md` (bản đồ nguồn mọi con số). File kết quả gốc: `retriever/baselines/*.txt`.
 
 ---

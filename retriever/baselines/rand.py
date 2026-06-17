@@ -20,16 +20,17 @@ SPLIT = "test"
 
 
 def main():
-    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold, qs_warm, qs_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
     g = torch.Generator(device=cfg.device).manual_seed(cfg.seed)
 
     def score_fn(u, hist):
         return torch.rand(len(u), N, generator=g, device=cfg.device)
 
-    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm,
+                                         query_scores=qs_warm)
     out_c, n_c, _ = _eval.rank_eval(cfg, users, q_cold, logq, score_fn, cfg.eval_ks, m_cold,
-                                    pooled=True)
+                                    pooled=True, query_scores=qs_cold)
 
     lines = _eval.header("Random baseline", cfg, SPLIT, n_cand, extra=f"seed={cfg.seed}")
     lines.append("# analytic recall@K ≈ K/N_cand: "

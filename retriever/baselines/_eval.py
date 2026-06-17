@@ -21,19 +21,27 @@ import metrics
 
 
 def setup(split: str = "test"):
-    """Load chung: cfg/spec/logq/users + protocol v2 (queries + mask cho 2 slice)."""
+    """Load chung: cfg/spec/logq/users + protocol v2 (queries + mask cho 2 slice) +
+    query scores cho liked-metric (qs_warm/qs_cold, song song queries từng slice)."""
     cfg = cfg_mod.TwoTowerConfig()
     spec = data_mod.load_feature_spec(cfg.train_data)
     logq = data_mod.load_logq(cfg.train_data).to(cfg.device)
     users = data_mod.UserTable(cfg.train_data, spec["hard_neg_cap"])
     q_warm, m_warm, q_cold, m_cold = metrics.load_eval_protocol(cfg.train_data, split)
-    return cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold
+    qs_warm = metrics.load_query_scores(cfg.train_data, split)
+    qs_cold = metrics.load_query_scores(cfg.train_data, f"{split}_cold")
+    return cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold, qs_warm, qs_cold
 
 
 def rank_eval(cfg, users, queries: Dict[int, List[int]], logq, score_fn: Callable, ks,
-              mask_ids: Dict[int, np.ndarray], batch: int = 512, pooled: bool = False):
+              mask_ids: Dict[int, np.ndarray], batch: int = 512, pooled: bool = False,
+              query_scores: Dict[int, List[int]] = None):
     """Trả (out_dict, n_users, n_cand). Mask candidate (logq=-inf) + seen−query
-    y hệt metrics.evaluate (cùng discount/idcg/pooled)."""
+    y hệt metrics.evaluate (cùng discount/idcg/pooled).
+
+    query_scores (song song queries): khi có -> thêm liked-recall@K/liked-ndcg@K
+    report-only (mirror metrics.evaluate; liked = query score>=1 & score>u_mean
+    per-user). Ranking/topk KHÔNG đổi -> so trực tiếp với binary."""
     device = cfg.device
     kmax = max(ks)
     candidate_mask = torch.isfinite(logq).to(device)
@@ -48,6 +56,12 @@ def rank_eval(cfg, users, queries: Dict[int, List[int]], logq, score_fn: Callabl
     pooled_hits = {k: 0.0 for k in ks}
     total_rel = 0
     n = 0
+
+    liked_on = query_scores is not None
+    u_mean = metrics.support_mean(users, uids) if liked_on else {}
+    sums_liked = {f"liked_recall@{k}": 0.0 for k in ks}
+    sums_liked.update({f"liked_ndcg@{k}": 0.0 for k in ks})
+    n_liked = 0
 
     for s in range(0, len(uids), batch):
         chunk = uids[s : s + batch]
@@ -65,7 +79,8 @@ def rank_eval(cfg, users, queries: Dict[int, List[int]], logq, score_fn: Callabl
             R = len(rel)
             if R == 0:
                 continue
-            hit = np.array([a in rel for a in topk[row]], dtype=np.float64)
+            ranked = topk[row]
+            hit = np.array([a in rel for a in ranked], dtype=np.float64)
             for k in ks:
                 h = hit[:k]
                 n_hit = h.sum()
@@ -76,11 +91,28 @@ def rank_eval(cfg, users, queries: Dict[int, List[int]], logq, score_fn: Callabl
             total_rel += R
             n += 1
 
+            if liked_on:
+                mu = u_mean[uid]
+                liked = set() if np.isnan(mu) else {
+                    a for a, sc in zip(queries[uid], query_scores[uid]) if sc >= 1 and sc > mu}
+                R_liked = len(liked)
+                if R_liked:
+                    hit_l = np.array([a in liked for a in ranked], dtype=np.float64)
+                    for k in ks:
+                        hl = hit_l[:k]
+                        sums_liked[f"liked_recall@{k}"] += hl.sum() / R_liked
+                        sums_liked[f"liked_ndcg@{k}"] += (hl * discount[:k]).sum() \
+                            / idcg_cum[min(R_liked, k) - 1]
+                    n_liked += 1
+
     out = {m: (v / n if n else 0.0) for m, v in sums.items()}
     if pooled:
         for k in ks:
             out[f"hitrate@{k}"] = pooled_hits[k] / total_rel if total_rel else 0.0
         out["n_pairs"] = total_rel
+    if liked_on:
+        out.update({m: (v / n_liked if n_liked else 0.0) for m, v in sums_liked.items()})
+        out["n_users_liked"] = n_liked
     return out, n, n_cand
 
 
@@ -95,6 +127,13 @@ def section(title: str, out: Dict[str, float], ks, n: int, pooled: bool = False)
         lines.append("")
         for k in ks:
             lines.append(f"hitrate@{k:<3} = {out[f'hitrate@{k}']:.6f}")
+    if f"liked_recall@{ks[0]}" in out:
+        lines.append(f"\n# liked-metric (report-only; users w/ >=1 liked query: {out['n_users_liked']:,})")
+        for k in ks:
+            lines.append(f"liked_recall@{k:<4} = {out[f'liked_recall@{k}']:.6f}")
+        lines.append("")
+        for k in ks:
+            lines.append(f"liked_ndcg@{k:<6} = {out[f'liked_ndcg@{k}']:.6f}")
     lines.append("")
     return lines
 

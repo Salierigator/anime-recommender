@@ -31,8 +31,8 @@ SPLIT = "test"
 BATCH = 64            # gather [E, W<=1024, 423] — batch nhỏ để không phình memory
 
 
-def build_content_matrix(cfg) -> np.ndarray:
-    """[N, D] content-vector: IDF-weighted + L2-norm. PAD/OOV -> vector 0 (đã mask ở eval)."""
+def build_content_matrix(cfg, use_idf: bool = True) -> np.ndarray:
+    """[N, D] content-vector: (IDF-weighted nếu use_idf) + L2-norm. PAD/OOV -> vector 0 (đã mask ở eval)."""
     spec = data_mod.load_feature_spec(cfg.train_data)
     items = data_mod.ItemTable(cfg.train_data)
     N = items.num_items
@@ -69,36 +69,56 @@ def build_content_matrix(cfg) -> np.ndarray:
     C = np.concatenate(blocks, axis=1).astype(np.float32)                     # [N, D]
 
     # IDF trên item thật (idx>=2): hiếm -> nặng. df+1 smoothing, +1 để df=full vẫn >0.
-    first_real = spec["special_idx"]["first_real"]
-    real = C[first_real:]
-    n_real = real.shape[0]
-    df = (real > 0).sum(axis=0)                                              # [D]
-    idf = np.log(n_real / (df + 1.0)) + 1.0
-    C *= idf[None, :]
+    if use_idf:
+        first_real = spec["special_idx"]["first_real"]
+        real = C[first_real:]
+        n_real = real.shape[0]
+        df = (real > 0).sum(axis=0)                                          # [D]
+        idf = np.log(n_real / (df + 1.0)) + 1.0
+        C *= idf[None, :]
 
     norm = np.linalg.norm(C, axis=1, keepdims=True)
     norm[norm == 0] = 1.0
     return C / norm                                                          # [N, D] L2-norm
 
 
-def main():
-    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
-    Cn = torch.from_numpy(build_content_matrix(cfg)).to(cfg.device)          # [N, D]
-
+def make_score_fn(Cn):
     def score_fn(u, hist):
         v = Cn[hist]                                                         # [E, W, D]
         mask = (hist != 0).unsqueeze(-1).float()                            # [E, W, 1]
         prof = (v * mask).sum(1) / mask.sum(1).clamp(min=1.0)                # [E, D] mean history
         prof = torch.nn.functional.normalize(prof, dim=1)
         return prof @ Cn.t()                                                # [E, N] cosine
+    return score_fn
 
-    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks,
-                                         m_warm, batch=BATCH)
-    out_c, n_c, _ = _eval.rank_eval(cfg, users, q_cold, logq, score_fn, cfg.eval_ks,
-                                    m_cold, batch=BATCH, pooled=True)
 
-    lines = _eval.header("Content-based baseline (mean + IDF)", cfg, SPLIT, n_cand,
-                         extra=f"content_dim={Cn.shape[1]}")
+def main():
+    # --- ablation IDF on/off trên VAL (chọn theo recall@headline_k) ---
+    cfg, _, logq, users, qv, mv, _, _, _, _ = _eval.setup("val")
+    HK = cfg.headline_k
+    sweep = {}
+    mats = {}
+    for use_idf in (True, False):
+        mats[use_idf] = torch.from_numpy(build_content_matrix(cfg, use_idf)).to(cfg.device)
+        out_v, _, _ = _eval.rank_eval(cfg, users, qv, logq, make_score_fn(mats[use_idf]),
+                                      cfg.eval_ks, mv, batch=BATCH)
+        sweep[use_idf] = out_v[f"recall@{HK}"]
+    best_idf = max(sweep, key=sweep.get)
+
+    # --- report TEST với cấu hình thắng (+ liked); logq split-independent, dùng lại ---
+    _, _, _, usersT, q_warm, m_warm, q_cold, m_cold, qs_warm, qs_cold = _eval.setup(SPLIT)
+    Cn = mats[best_idf]
+    score_fn = make_score_fn(Cn)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, usersT, q_warm, logq, score_fn, cfg.eval_ks,
+                                         m_warm, batch=BATCH, query_scores=qs_warm)
+    out_c, n_c, _ = _eval.rank_eval(cfg, usersT, q_cold, logq, score_fn, cfg.eval_ks,
+                                    m_cold, batch=BATCH, pooled=True, query_scores=qs_cold)
+
+    lines = _eval.header(f"Content-based baseline (mean{', +IDF' if best_idf else ', no-IDF'})",
+                         cfg, SPLIT, n_cand,
+                         extra=f"content_dim={Cn.shape[1]}, use_idf={best_idf} (selected on val)")
+    lines += [f"## val sweep (recall@{HK}): "
+              + "  ".join(f"idf={ui}: {sweep[ui]:.6f}" for ui in (True, False)), ""]
     lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
     lines += _eval.section("cold (test_cold, full-catalog)", out_c, cfg.eval_ks, n_c, pooled=True)
     _eval.write_result(HERE / "content_based.txt", lines)

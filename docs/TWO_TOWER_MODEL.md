@@ -2,7 +2,7 @@
 
 Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`). Baselines so sánh: `docs/BASELINES.md`.
 
-> ⚠️ Số liệu = snapshot **2026-06-11** (best hiện tại: `v5_hist64_ep2`, 2 epoch). Retriever còn tune tiếp trên Colab → best.pt và số có thể đổi; số mới nhất luôn ở root `PROGRESS.md`; tổng hợp kết quả + nguồn từng con số: `docs/RESULTS.md`. Kiến trúc/protocol thì ổn định.
+> ⚠️ Số liệu = snapshot **2026-06-11** (`v5_hist64_ep2`). Config đã **chốt `final` (no synopsis, 2026-06-17)** — `best.pt`/`artifacts/` còn là `final_syn`, **pending re-export**; số mới nhất + trạng thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: `docs/RESULTS.md`. Kiến trúc/protocol trong file thì ổn định.
 
 ---
 
@@ -48,6 +48,8 @@ Mỗi example `(user_idx, pos)`. Batch B:
 ## 5. Loss
 
 InfoNCE + logQ + τ + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 tắt — knob cân popularity vì metric thưởng popularity còn logQ chống). Hard-neg không logQ, nhân β. Mask false-negative + mask pad → −inf.
+
+> Ablation các tham số loss (`docs/EXPERIMENTS.md §4`): **logQ α là lever quan trọng nhất** (α=0 → sụp); τ tác dụng nhỏ (.07 best); **β và m_hardneg đo ra TRƠ** (không phải lever — hard-neg là item seen nên bị mask ở eval; β no-op khi m_hardneg=0). Đây chỉ là kết luận empirical — **công thức + nhánh hard-neg giữ nguyên**.
 
 ## 6. Config surface (`TwoTowerConfig` — đổi từ notebook, không hardcode)
 

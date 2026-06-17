@@ -24,7 +24,7 @@ POP_SPLIT = "train"   # đếm popularity trên train -> không leak test
 
 
 def main():
-    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
+    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold, qs_warm, qs_cold = _eval.setup(SPLIT)
     N = logq.shape[0]
     ds = data_mod.ExamplesDataset(cfg.train_data, POP_SPLIT)
     pop = torch.from_numpy(
@@ -34,7 +34,8 @@ def main():
     def score_fn(u, hist):
         return pop.unsqueeze(0).expand(len(u), N).clone()
 
-    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm,
+                                         query_scores=qs_warm)
 
     lines = _eval.header("MostPopular baseline", cfg, SPLIT, n_cand,
                          extra=f"popularity on split={POP_SPLIT}")

@@ -27,7 +27,8 @@ import data as data_mod
 import _eval
 
 SPLIT = "test"
-KNN = 200                       # số neighbor giữ mỗi item
+KNN_GRID = [50, 100, 200, 500, 1000]       # số neighbor giữ mỗi item — sweep trên val
+KNN_GRID_SMOKE = [100, 200]
 
 
 def build_user_items(cfg, num_users, num_items, subset=None) -> sp.csr_matrix:
@@ -40,16 +41,13 @@ def build_user_items(cfg, num_users, num_items, subset=None) -> sp.csr_matrix:
     )
 
 
-def main():
-    cfg, spec, logq, users, q_warm, m_warm, q_cold, m_cold = _eval.setup(SPLIT)
-    N = logq.shape[0]
-    smoke = "--smoke" in sys.argv
-
-    user_items = build_user_items(cfg, spec["num_users"], N, subset=200_000 if smoke else None)
-    model = CosineRecommender(K=KNN)
+def fit_sim(user_items, K) -> sp.csr_matrix:
+    model = CosineRecommender(K=K)
     model.fit(user_items)
-    S = model.similarity.tocsr().astype(np.float32)                          # [N, N] top-K item-item
+    return model.similarity.tocsr().astype(np.float32)                       # [N, N] top-K item-item
 
+
+def make_score_fn(cfg, S, N):
     def score_fn(u, hist):
         h = hist.cpu().numpy()                                              # [E, W]
         E, W = h.shape
@@ -62,12 +60,39 @@ def main():
         )
         scores = np.asarray((H @ S).todense(), dtype=np.float32)            # [E, N]
         return torch.from_numpy(scores).to(cfg.device)
+    return score_fn
 
-    out_w, n_w, n_cand = _eval.rank_eval(cfg, users, q_warm, logq, score_fn, cfg.eval_ks, m_warm)
+
+def main():
+    smoke = "--smoke" in sys.argv
+    grid = KNN_GRID_SMOKE if smoke else KNN_GRID
+
+    # --- sweep K trên VAL (chọn theo recall@headline_k) ---
+    cfg, spec, logq, users, qv, mv, _, _, _, _ = _eval.setup("val")
+    N = logq.shape[0]
+    HK = cfg.headline_k
+    user_items = build_user_items(cfg, spec["num_users"], N, subset=200_000 if smoke else None)
+
+    sweep = {}
+    sims = {}
+    for K in grid:
+        sims[K] = fit_sim(user_items, K)
+        out_v, _, _ = _eval.rank_eval(cfg, users, qv, logq, make_score_fn(cfg, sims[K], N),
+                                      cfg.eval_ks, mv)
+        sweep[K] = out_v[f"recall@{HK}"]
+    best_k = max(sweep, key=sweep.get)
+    S = sims[best_k]
+
+    # --- report TEST với K thắng (+ liked) ---
+    _, _, _, usersT, q_warm, m_warm, _, _, qs_warm, _ = _eval.setup(SPLIT)
+    out_w, n_w, n_cand = _eval.rank_eval(cfg, usersT, q_warm, logq, make_score_fn(cfg, S, N),
+                                         cfg.eval_ks, m_warm, query_scores=qs_warm)
 
     lines = _eval.header(
-        f"ItemKNN (item-item cosine, K={KNN})" + (" [SMOKE]" if smoke else ""),
+        f"ItemKNN (item-item cosine, K={best_k}, selected on val)" + (" [SMOKE]" if smoke else ""),
         cfg, SPLIT, n_cand, extra=f"co-occurrence on split=train, sim nnz={S.nnz:,}")
+    lines += [f"## val sweep (recall@{HK}): "
+              + "  ".join(f"K={K}: {sweep[K]:.6f}" for K in grid), ""]
     lines += _eval.section("warm (test)", out_w, cfg.eval_ks, n_w)
     lines += ["## cold (test_cold)",
               "N/A — H không có co-occurrence train -> similarity = 0, không score được.",

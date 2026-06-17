@@ -1,4 +1,4 @@
-# EXPERIMENTS — thử nghiệm chọn retriever final (synopsis · subset HP-search · config linh hoạt)
+# EXPERIMENTS — thử nghiệm chọn retriever final (synopsis · subset HP-search · config linh hoạt · loss ablation)
 
 > Nguồn viết đồ án cho phần **thử nghiệm chọn model retriever cuối cùng**. Bổ sung cho
 > `TWO_TOWER_MODEL.md` (kiến trúc + protocol eval) và `DATA_SPLIT.md` (split). Số liệu từng run
@@ -6,9 +6,11 @@
 > tổng hợp số chốt: `RESULTS.md`. Code: `retriever/src/{config,data,model,train,search}.py`,
 > `retriever/data_prep/07_synopsis_emb.py`, `retriever/train.ipynb`.
 >
-> ⚠️ **Config final hiện tại = `v_final`** (2026-06-16): `history_source=embed`, `train_hist_len=128`,
-> 10 epoch, **synopsis ON dim 64** (`final_syn`/best.pt). Số `v5_hist64_ep2` trong `RESULTS.md`/
-> `PROGRESS.md` đã STALE — chờ re-measure + retrain ranker (`docs/RANKER.md §9`).
+> ⚠️ **Config final = `final`** (2026-06-17): `history_source=embed`, `train_hist_len=128`, 10 epoch, d128,
+> τ.07, logQ α=1, **synopsis OFF**. Synopsis (`final_syn`) đã test on/off và **bị bác** — cải thiện warm
+> nhưng regress cold, mà retriever ưu tiên cold (`docs/SYNOPSIS_EMB.md`). **PENDING**: `best.pt`/`artifacts/`
+> hiện vẫn `final_syn` (`CONTRACT.md` step 41000) → chờ re-export best.pt=`final` + retrain ranker
+> (`docs/RANKER.md §9`). Số `v5_hist64_ep2` trong `RESULTS.md`/`PROGRESS.md` cũng STALE.
 
 ## 0. Bối cảnh
 
@@ -27,40 +29,26 @@ Ba trục thử nghiệm, tất cả bật/tắt qua `TwoTowerConfig` (không ha
 
 ---
 
-## 1. Synopsis embedding (content text-emb, item-side)
+## 1. Synopsis embedding (content text-emb, item-side) — ĐÃ TEST, **BỊ BÁC**
 
-**Vì sao**: model hiện bỏ HOÀN TOÀN cột `synopsis` (94% anime có, ~100% tiếng Anh). Synopsis mang
-tín hiệu nội dung mà 9 feature categorical/multi-hot không có — kỳ vọng cải thiện nhất ở **cold item**
-(anime mới chỉ có content, id→OOV) và head-precision warm.
+**Vì sao thử**: model bỏ HOÀN TOÀN cột `synopsis` (94% anime có, ~100% tiếng Anh) — tín hiệu nội dung mà
+9 feature categorical/multi-hot không có. **Kỳ vọng ban đầu**: giúp nhất ở **cold item** (anime mới chỉ có
+content, id→OOV) + head-precision warm.
 
-**Pipeline (frozen embedding + projection trainable):**
+**Cách làm (tóm tắt — thiết kế + code chi tiết ở `docs/SYNOPSIS_EMB.md`, không lặp ở đây)**: frozen
+`all-MiniLM-L6-v2` (384 dim, L2-norm, swappable; sinh offline bằng `data_prep/07_synopsis_emb.py`) →
+projection trainable `synopsis_dim` concat vào content path `ItemTower` (gate `cfg.use_synopsis`); row
+low-info (~15%) thay bằng `no_synopsis` học được. Export/serve không cần sửa (synopsis chảy qua
+`refresh_item_cache`).
 
-1. **Offline 1 lần** — `data_prep/07_synopsis_emb.py` (chạy local CPU, SAU `01`):
-   - Đọc `cleaned-data/details.csv::synopsis` + `train-data/anime_id_map.parquet` (join mal_id→anime_idx).
-   - Tiền xử lý: **strip `(Source: ...)`** ở đuôi (~32.9% dính, boilerplate gây nhiễu);
-     cờ `low_info = NaN | <50 ký tự | placeholder "No synopsis…"` (đo thực tế **15.1%**, khớp ước lượng
-     6% NaN + 9.4% <50 ký tự).
-   - Encode `all-MiniLM-L6-v2` (384 dim), **L2-normalize trong script** → `synopsis_emb.npy [num_items,384]`
-     (row 0,1 = PAD/OOV = zeros) + `synopsis_low_info.npy [num_items] bool` (row 0,1 = True) + `synopsis_meta.json`.
-   - **Frozen, swappable**: đổi `bge-small-en-v1.5`/`gte-small` (cùng 384) qua `cfg.synopsis_emb_file`,
-     không train, TÁCH khỏi vòng re-export retriever.
-2. **Trong model** (`ItemTower`, gate `cfg.use_synopsis`):
-   - Chiếu raw 384 → `synopsis_dim` (mặc định 48 ≈ ngang khối genres/themes/studios; không lấn 60 dim
-     content còn lại) bằng `_mlp(384, synopsis_proj_hidden, synopsis_dim)` — `[]` = Linear thuần,
-     `[128]` = 1 hidden nếu underfit. Concat vào content path SAU studios, trước id → `in_dim` tự cộng.
-   - **Low-info → vec học được**: row low_info (gồm PAD/OOV) thay projection bằng `no_synopsis`
-     (`nn.Parameter`, học được) → tower phớt lờ synopsis rác mà không hỏng phần synopsis tốt.
-     Thay SAU projection (post-proj) nên né NaN do normalize vec ~0.
-3. **Export/serve**: `item_vectors.npy` build qua `refresh_item_cache` chạy ItemTower → synopsis vào
-   vector TỰ ĐỘNG, `export.py`/`test_export.py` không cần sửa (output vẫn `d=128`; synopsis nằm trong
-   tower trước MLP cuối). Chỉ cần `synopsis_emb.npy` có mặt trong train-data lúc export.
+**Kết quả (2026-06-17) = REJECTED**: ablation `final` (OFF) vs `final_syn` (ON) — cùng config v_final, chỉ
+khác `use_synopsis`:
+- **Warm cải thiện** (test ndcg@10 +.064, r@200 +.010) — nhưng dồn vào head-precision, là việc của ranker.
+- **Cold REGRESS mạnh** (val_cold r@200 −.115, liked_recall@200 −.148, honly −.066) — ngược động cơ ban đầu.
 
-**Ladder thử**: (1) baseline `use_synopsis=True, dim=48, hidden=[]` (MiniLM) vs control OFF — đo warm
-recall@200 + cold; (2) nếu cải thiện → `dim=64`, `hidden=[128]`, rồi swap `bge-small`. Mỗi lần lật 1 đòn bẩy.
-
-**Kết quả (2026-06-16)**: ablation `final` (syn OFF) vs `final_syn` (syn ON) — **cùng config v_final**,
-chỉ khác `use_synopsis` — xác nhận synopsis cải thiện **warm** (test ndcg@10 +.025, r@200 +.010), đã
-chốt `synopsis_dim=64` vào best.pt. Bảng số + caveat cold (chưa có ablation): **`docs/SYNOPSIS_EMB.md`**.
+→ retriever ưu tiên cold (cold serve = cosine trực tiếp), nên **chốt `final` synopsis OFF**. Bảng số đầy
+đủ + cơ chế warm↑/cold↓ (co-adaptation với id; cạnh tranh capacity với feature cấu trúc; MiniLM frozen ít
+discriminative cho cold): **`docs/SYNOPSIS_EMB.md`**. Code synopsis giữ nguyên (chỉ `use_synopsis=False`).
 
 ---
 
@@ -119,7 +107,69 @@ sort `test_recall@200`, có cột mới `use_synopsis/synopsis_dim/synopsis_norm
 
 ---
 
-## 4. Quy trình end-to-end
+## 4. Loss ablation — logQ / τ / β / m_hardneg
+
+Quét 4 tham số hàm loss `info_nce_logq` (subset 15% user, ep2, checkpoint-path test — coarse, đủ xếp hạng
+lever; §2 giải thích vì sao subset tin được). **Mục đích: xác định lever nào THẬT sự đổi kết quả.** Công
+thức loss + kiến trúc model GIỮ NGUYÊN — đây chỉ là kết luận empirical về độ nhạy tham số.
+
+### 4.1. logQ α — lever quan trọng nhất (giữ α=1)
+
+| logq_alpha | test r@200 | test ndcg@10 |
+|---|---|---|
+| 0 (tắt)   | .3416 | .1319 |
+| 0.5       | .5738 | .3520 |
+| **1.0** ★ | **.6211** | **.5047** |
+
+Tắt logQ (α=0) làm model **sụp** (ndcg@10 .13, r@200 .34): popularity-debiasing là linh hồn — metric recall
+thưởng item phổ biến, không trừ logQ thì model gom hết về head và hỏng cá nhân hoá. α=1 (trừ đủ) tốt nhất.
+
+### 4.2. τ (temperature) — lever nhỏ (giữ .07)
+
+| tau | test r@200 | test ndcg@10 |
+|---|---|---|
+| 0.05 | .6200 | .4920 |
+| **0.07** ★ | **.6209** | **.5071** |
+| 0.10 | .6181 | .4967 |
+
+Có ảnh hưởng nhưng nhỏ; .07 nhỉnh nhất ở ndcg@10, chênh r@200 trong vùng noise (<.004) → chọn .07.
+
+### 4.3. β và m_hardneg — **VÔ NGHĨA (không phải lever)**
+
+Kết quả phản trực giác đáng ghi: hàm loss thiết kế CÓ nhánh hard-negative (sample từ `hard_neg_ids` của
+chính user, nhân hệ số β) — nghe rất hợp lý — nhưng đo ra **không đổi kết quả**.
+
+**β (bs16384, mhn=5):** .5 → r@200 .6204 / ndcg@10 .5057 · 1.0 → .6211 / .5047 · 2.0 → .6210 / .5054.
+**m_hardneg (bs16384, β=1):** 0 → .6208 / .5010 · 5 → .6211 / .5047 · 10 → .6210 / .5062.
+
+Mọi chênh lệch <.004 (noise floor `DATA_SPLIT.md §8`); m_hardneg=0 (tắt hẳn hard-neg) ngang bằng.
+
+**Kiểm soát giả thuyết "batch lớn nuốt negative"** (nghi β/m_hardneg trơ vì bs16384 quá lớn, ≈16k in-batch
+negative áp đảo 5-20 hard-neg). Lặp ở batch nhỏ hơn (test r@200):
+
+| batch_size | mhn=0 | mhn=5 | mhn=10 | mhn=20 |
+|---|---|---|---|---|
+| 2048 | **.6420** | .6413 | .6404 | .6401 |
+| 512  | **.6516** | .6498 | .6494 | .6484 |
+
+→ **mhn=0 vẫn thắng/hoà ở MỌI batch size** ⇒ giả thuyết bị bác. Hard-neg không phải lever ở mọi quy mô đã thử.
+
+**Vì sao β & m_hardneg trơ — 2 cơ chế:**
+
+1. **Hard-neg là item SEEN → bị mask ở eval.** `hard_neg_ids` = `dropped ∪ (score 1-4)` = interaction user
+   ĐÃ xem. Protocol eval mask toàn bộ `seen(user) − query` khỏi candidate (`metrics.py`). Nên đúng những
+   item model học để dìm xuống lại **không bao giờ là candidate lúc chấm** → công học không chuyển thành
+   recall/ndcg warm. (Hard-neg dạy "phân biệt đã-thích vs đã-bỏ" — nhưng metric retrieval không đo việc đó.)
+2. **β là no-op tuyệt đối khi m_hardneg=0.** Trong `loss.py`, logit hard-neg = `s_hn + log(β)`; khi mhn=0
+   nhánh hard-neg bị mask hết về −inf → `log(β) + (−inf) = −inf` bất kể β (kiểm chứng: cặp run bs512 mhn=0
+   cho kết quả byte-identical dù đổi β). Khi mhn>0, β chỉ dịch một hằng số nhỏ trên vài logit gần như không
+   đóng góp vào mẫu số InfoNCE (bị ~B in-batch negative áp đảo) → tác động chìm dưới noise.
+
+**Kết luận**: β và m_hardneg **không phải đòn bẩy** cho bài toán + protocol này. **GIỮ NGUYÊN công thức loss
++ kiến trúc** (chỉ ghi nhận empirical, không đề xuất gỡ nhánh hard-neg); final dùng m_hardneg=5 / β=1 như
+xuyên suốt — vì trơ nên giá trị cụ thể không ảnh hưởng.
+
+## 5. Quy trình end-to-end
 
 ```bash
 # (local, 1 lần) sinh synopsis artifact rồi đẩy 2 .npy lên Drive train-data/
@@ -134,10 +184,11 @@ subset 15%) → xem `runs.csv` (lọc `train_user_frac=0.15`) chọn top-K → *
 (bỏ `train_user_frac`) → chốt model final → re-export `artifacts/` + retrain ranker (`RANKER.md §9`)
 → final-exam (test + test_cold) chấm 1 lần.
 
-## 5. Đọc số khi viết báo cáo
+## 6. Đọc số khi viết báo cáo
 
 - **Bảng so config**: `runs.csv` (cột knob + `{val,test}_{recall,ndcg}@K`). Tách coarse (subset, có
   `train_user_frac`) vs confirm (full) — chỉ kết luận final từ **confirm trên full data**.
 - **Đường cong**: `runs/v5/<run>/history.json` (loss + val metric theo step) → notebook cell 7-8.
 - **Cold (anime mới)**: notebook cell 10 (`split='val'` khi tune; `test_cold` = final exam, 1 lần).
-- **Provenance đầy đủ 1 run**: `runs/v5/<run>/config.json`. Bar baselines: `RESULTS.md` / `BASELINES.md`.
+- **Provenance đầy đủ 1 run**: `runs/v5/<run>/config.json`. Bar baselines: `RESULTS.md` / `BASELINES.md`
+  (⏳ baselines đang re-run — itemknn K, content IDF, MF, +liked-metric — số PENDING).

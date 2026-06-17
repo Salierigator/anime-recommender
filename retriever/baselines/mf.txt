@@ -1,19 +1,66 @@
-# MF (implicit ALS, factors=64, iters=15) + fold-in — split=test — protocol v2 (mask seen−query, history cap=1024)
-# generated 2026-06-10T21:48:36  device=mps  trained on split=train
+# MF (implicit ALS) + fold-in — per-axis report — split=test — protocol v2 (mask seen−query, history cap=1024)
+# generated 2026-06-17T09:48:31  device=mps  refit on FULL train; HP coarse-swept on 15000 random users (val)
 # candidates (finite logq): 22,821
 
-## warm (test)  (users: 14,250)
-recall@10   = 0.195064
-recall@50   = 0.447739
-recall@100  = 0.575908
-recall@200  = 0.698857
-recall@500  = 0.835245
+## val sweep (coarse on 15000 users) — factors/alpha -> recall@200 / ndcg@10:
+  factors=128  alpha=10.0  -> r@200 0.741190  ndcg@10 0.633900
+  factors=128  alpha=40.0  -> r@200 0.716627  ndcg@10 0.430130
+  factors=64   alpha=10.0  -> r@200 0.716589  ndcg@10 0.596850
+  factors=128  alpha=1.0   -> r@200 0.710901  ndcg@10 0.705225
+  factors=64   alpha=40.0  -> r@200 0.695760  ndcg@10 0.419266
+  factors=64   alpha=1.0   -> r@200 0.695432  ndcg@10 0.678760
 
-ndcg@10     = 0.677119
-ndcg@50     = 0.564444
-ndcg@100    = 0.576593
-ndcg@200    = 0.620144
-ndcg@500    = 0.678345
+## MF recall-optimal (factors=128, alpha=10.0, reg=0.05, iters=15) — warm (test)  (users: 14,250)
+recall@10   = 0.198153
+recall@50   = 0.482307
+recall@100  = 0.622260
+recall@200  = 0.751072
+recall@500  = 0.879742
+
+ndcg@10     = 0.637359
+ndcg@50     = 0.573606
+ndcg@100    = 0.598468
+ndcg@200    = 0.647610
+ndcg@500    = 0.703927
+
+# liked-metric (report-only; users w/ >=1 liked query: 12,638)
+liked_recall@10   = 0.263128
+liked_recall@50   = 0.586242
+liked_recall@100  = 0.721277
+liked_recall@200  = 0.832759
+liked_recall@500  = 0.928380
+
+liked_ndcg@10     = 0.444248
+liked_ndcg@50     = 0.497456
+liked_ndcg@100    = 0.548480
+liked_ndcg@200    = 0.591836
+liked_ndcg@500    = 0.626472
+
+## MF ndcg-optimal (factors=128, alpha=1.0, reg=0.05, iters=15) — warm (test)  (users: 14,250)
+recall@10   = 0.208672
+recall@50   = 0.469267
+recall@100  = 0.595370
+recall@200  = 0.713550
+recall@500  = 0.840492
+
+ndcg@10     = 0.702672
+ndcg@50     = 0.590268
+ndcg@100    = 0.601356
+ndcg@200    = 0.642896
+ndcg@500    = 0.697524
+
+# liked-metric (report-only; users w/ >=1 liked query: 12,638)
+liked_recall@10   = 0.281030
+liked_recall@50   = 0.575896
+liked_recall@100  = 0.696008
+liked_recall@200  = 0.798581
+liked_recall@500  = 0.899062
+
+liked_ndcg@10     = 0.505191
+liked_ndcg@50     = 0.519289
+liked_ndcg@100    = 0.561140
+liked_ndcg@200    = 0.599952
+liked_ndcg@500    = 0.634976
 
 ## cold (test_cold)
 N/A — item factors của H không được học (H cách ly khỏi train);
