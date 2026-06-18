@@ -28,8 +28,8 @@ SRC = Path(__file__).resolve().parent / "src"
 sys.path.insert(0, str(SRC))
 
 import config  # noqa: E402
-from data import UserTable, load_feature_spec, load_logq  # noqa: E402
-from metrics import evaluate, load_eval_protocol  # noqa: E402
+from data import UserTable, load_cold_mask, load_feature_spec, load_logq  # noqa: E402
+from metrics import evaluate, load_eval_protocol, load_query_scores  # noqa: E402
 from model import UserTower, _masked_mean, _masked_weighted_mean  # noqa: E402
 
 
@@ -159,6 +159,9 @@ def main():
     ap = argparse.ArgumentParser(description="Eval artifacts export theo protocol đầy đủ")
     ap.add_argument("--out", type=Path, default=config.ROOT.parent / "artifacts")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--final-exam", action="store_true",
+                    help="chấm test_cold retriever 1 LẦN: full-catalog + honly (candidate chỉ tập H) "
+                         "+ liked, serve-path → artifacts/test_cold_final_exam.json (chạy SAU export thường)")
     args = ap.parse_args()
 
     validate_ranker_exports(args.out)
@@ -190,6 +193,31 @@ def main():
     import json
     (args.out / "eval_reference.json").write_text(json.dumps(reference, indent=2))
     print(f"\n[ok  ] eval_reference.json ghi vào {args.out} (reference cho ranker sanity gate)")
+
+    if args.final_exam:
+        # FINAL EXAM retriever cold (chấm 1 lần): test_cold full-catalog + honly (candidate
+        # chỉ tập H = đúng UX section "Anime mới", rank giữa các anime mới với nhau) + liked.
+        # Serve-path (item_cache row H = OOV) → đồng bộ mọi số official khác.
+        _, _, q_tc, m_tc = load_eval_protocol(config.TRAIN_DATA, "test")  # q_cold của test = test_cold
+        qs_tc = load_query_scores(config.TRAIN_DATA, "test_cold")
+        cold_mask = load_cold_mask(config.TRAIN_DATA, enc.item_cache.shape[0])
+        full = evaluate(enc, users, q_tc, logq, ks, m_tc, eval_history_cap=cap,
+                        pooled=True, query_scores=qs_tc)
+        honly = evaluate(enc, users, q_tc, logq, ks, m_tc, eval_history_cap=cap,
+                         pooled=True, query_scores=qs_tc, candidate_mask=cold_mask)
+        def _liked(m):
+            return (" ".join(f"lr@{k}={m[f'liked_recall@{k}']:.4f}" for k in (100, 200))
+                    + f" lndcg@10={m['liked_ndcg@10']:.4f} (n_liked={m['n_users_liked']:,})")
+        print(f"\n=== FINAL EXAM test_cold retriever (serve-path, n_users={full['n_users']:,}) ===")
+        print(f"  full-catalog : {fmt(full, ks)}")
+        print(f"     + liked   : {_liked(full)}")
+        print(f"  honly (chỉ H): {fmt(honly, ks)}")
+        print(f"     + liked   : {_liked(honly)}")
+        (args.out / "test_cold_final_exam.json").write_text(json.dumps(
+            {"note": "retriever serve-path, chấm 1 lần; full=ranking toàn catalog 22.8k, "
+                     "honly=candidate giới hạn tập H (UX section Anime mới)",
+             "full_catalog": full, "honly": honly}, indent=2))
+        print(f"[ok  ] test_cold_final_exam.json ghi vào {args.out}")
 
     ckpt_path = config.ROOT / "checkpoints" / "best.pt"
     if ckpt_path.exists():

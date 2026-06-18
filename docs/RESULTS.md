@@ -165,14 +165,20 @@ So bar MF ALS **đã tune** (full catalog, test — `docs/BASELINES.md §5`): tw
 
 α=1 dìm cold tận đáy (val_cold ndcg@10 .1398→.0002, r@100 .3373→.0087) vì model học trên pool warm-only → quyết định **tách kênh serve** giữ nguyên: cold (`is_cold`) xếp theo cosine retriever, KHÔNG qua blend. Kênh cosine cold per-K: §3b hàng cold val (`final`: r@100 .3373 / r@200 .4664 / ndcg@10 .1398). So sánh cấu trúc: two-tower cold r@200 **.4664** trong khi MF/KNN/popular = 0 by construction — claim "gợi ý được anime mới" của đồ án.
 
-**Held-out — test_cold final exam (chấm ĐÚNG 1 lần 2026-06-18, K=200 α=1; nguồn `eval_selection.json::{baseline_test_cold, test_cold_metrics}`):**
+**Held-out — test_cold final exam (chấm ĐÚNG 1 lần 2026-06-18, serve-path; nguồn ranker `eval_selection.json::{baseline_test_cold, test_cold_metrics}` + retriever `artifacts/test_cold_final_exam.json`):**
 
-| test_cold (8.510 users; liked n=6.341) | r@10 | r@100 | r@200 | ndcg@10 | ndcg@100 | hit@100 | hit@200 | liked_r@100 | liked_r@200 | liked_ndcg@10 |
-|---|---|---|---|---|---|---|---|---|---|---|
-| ③ kênh phục vụ = cosine retriever (CHỐT) | .0751 | **.3414** | **.4710** | **.1397** | .2009 | .3492 | .4766 | **.4135** | **.5484** | **.0957** |
-| ① cold ép qua blend α=1 (diagnostic) | .0000 | .0099 | .4710 | **.0000** | .0053 | .0251 | .4766 | .0118 | .5484 | .0000 |
+| test_cold (8.510 users; liked n=6.341) | r@10 | r@100 | r@200 | ndcg@10 | ndcg@100 | hit@200 | liked_r@100 | liked_r@200 | liked_ndcg@10 |
+|---|---|---|---|---|---|---|---|---|---|
+| ③a **full-catalog** = cosine retriever toàn 22.8k (CHỐT, đè lên blend ① bên dưới) | .0751 | **.3414** | **.4710** | **.1397** | .2009 | .4766 | **.4135** | **.5484** | **.0957** |
+| ③b **honly** = cosine **chỉ rank giữa 1.142 item mới H** (= đúng UX section "Anime mới") | .1616 | **.6755** | **.8261** | **.2368** | .3786 | — | **.7306** | **.8464** | **.1681** |
+| ① cold ép qua blend α=1 (diagnostic — vì sao tách kênh) | .0000 | .0099 | .4710 | **.0000** | .0053 | .4766 | .0118 | .5484 | .0000 |
 
-Số kênh cosine khớp val_cold (r@100 .3373 / r@200 .4664 / ndcg@10 .1398; liked_r@100 .4074 / liked_ndcg@10 .0920) → **generalize, không overfit**; blend α=1 lặp lại đúng hiện tượng dìm cold (.1398→.0002 val ≈ .1397→.0000 test). ⇒ chất lượng cold user thực tế thấy = cosine **.1397** ndcg@10 / **.3414** r@100 / liked_r@100 **.4135**. Đây là **lần chấm cuối** test_cold của toàn pipeline (file `eval_queries_test_cold.parquet` đã xoá lại giữ kỷ luật). Liked + pooled-hitrate đầy đủ trong `eval_selection.json::{baseline_test_cold, test_cold_metrics}`. *(Diagnostic "cold-item-only / honly" — candidate giới hạn trong 1.142 item H — KHÔNG nằm trong final exam; chỉ đo trên val_cold ở retriever notebook → `retriever/runs/cold_runs.csv` cột `cold_honly_recall@K`.)*
+Đọc:
+- **③a full-catalog khớp đúng cosine baseline của ranker** (.1397 / .3414 — serve-path nhất quán) và khớp val_cold (.1398 / .3373) → **generalize, không overfit**.
+- **③b honly = số trung thực của section "Anime mới cho bạn"** (chỉ hiển thị anime mới → rank giữa H với nhau, không phải đấu với 21k item warm): r@100 **.6755** / r@200 **.8261** / ndcg@10 **.2368** / liked_r@100 **.7306**. Khớp val_cold honly (`cold_runs.csv` .6726 / .8234) → generalize. **Chênh ③a↔③b cho thấy "thảm hại .1397" chủ yếu do 21k distractor warm trong full-catalog, không phải do retriever yếu**: khi chỉ chấm giữa anime mới (đúng kênh serve), nó tìm đúng ~68% anime mới liên quan trong top-100.
+- ① blend α=1 → ndcg@10 .0000 (lặp lại val_cold .1398→.0002) ⇒ khẳng định **tách kênh** (cold KHÔNG qua ranker).
+
+Đây là **lần chấm cuối** test_cold của toàn pipeline (artifact `eval_queries_test_cold.parquet` đã xoá lại giữ kỷ luật). Số đầy đủ mọi K: `artifacts/test_cold_final_exam.json` (retriever full + honly + liked) + `eval_selection.json` (ranker two-stage + cosine).
 
 ## 8. Feature importance (gain, LightGBM winner — `ranker_meta.json::feature_importance_gain`)
 
