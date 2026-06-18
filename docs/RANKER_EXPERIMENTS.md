@@ -55,24 +55,24 @@ Pool ceiling (trần rerank, r@200 trong pool): val .6758 / test .6758. recall@2
 > α best = **1.0** mọi config (model đủ tin override hẳn cosine — khác ranker cũ cần α=.5). **TẤT CẢ
 > vượt xa cosine** (ndcg@10 .5343 → ~.68–.71; liked_ndcg@10 .3894 → ~.554–.563). Số gốc: `models/leaderboard.csv`.
 
-| run | objective / lever | ndcg@10 | ndcg@100 | **liked_ndcg@10** | liked_r@100 | r@10 | iter | sec |
-|---|---|---|---|---|---|---|---|---|
-| **lrank_t20_gainLin** | lambdarank t20, label_gain=[0,1,2,3,4] | **.7134** | .6078 | .5567 | .7196 | .2116 | 1995 | 530 |
-| lrank_t20_gainExp | lambdarank t20, gain=[0,3,7,15,31] | .6996 | .6013 | .5608 | .7217 | .2084 | 2609 | 661 |
-| **xendcg_lr03** | rank_xendcg, lr=0.03 | .6982 | .6012 | **.5632** | .7201 | .2102 | 3995 | 488 |
-| xendcg_es10 | rank_xendcg, early-stop ndcg@10 only | .6981 | .6012 | .5627 | .7195 | .2095 | 2964 | 362 |
-| xendcg_l127 | rank_xendcg, num_leaves=127 | .6963 | .6000 | .5614 | .7188 | .2095 | 1464 | 217 |
-| xendcg | rank_xendcg (winner cũ) | .6956 | .6005 | .5609 | .7200 | .2089 | 1983 | 243 |
-| lrank_t50 | lambdarank truncation 50 | .6955 | .6007 | .5593 | .7218 | .2082 | 1570 | 557 |
-| xendcg_ff09 | rank_xendcg, feature/bagging .9 | .6955 | .6004 | .5610 | .7195 | .2092 | 1917 | 264 |
-| lrank_t30 | lambdarank truncation 30 | .6950 | .5999 | .5585 | .7221 | .2078 | 1621 | 504 |
-| lrank_t20_l127 | lambdarank t20, num_leaves=127 | .6948 | .5985 | .5604 | .7213 | .2075 | 1484 | 440 |
-| lrank_t20 | lambdarank truncation 20 | .6944 | .5989 | .5593 | .7216 | .2070 | 2072 | 531 |
-| xendcg_l255_mdl50 | rank_xendcg, leaves=255, min_data=50 | .6940 | .5984 | .5598 | .7188 | .2088 | 546 | 118 |
-| xendcg_lr10 | rank_xendcg, lr=0.1 | .6914 | .5970 | .5580 | .7166 | .2073 | 685 | 108 |
-| lrank_t10_es10 | lambdarank t10, early-stop ndcg@10 | .6879 | .5951 | .5549 | .7204 | .2051 | 1362 | 294 |
-| lrank_t10 | lambdarank truncation 10 | .6874 | .5953 | .5546 | .7210 | .2047 | 1295 | 282 |
-| lrank_t20_gainTop | lambdarank t20, gain=[0,1,3,7,31] | .6803 | .5926 | .5544 | .7216 | .2033 | 1820 | 471 |
+| run | objective / lever | ndcg@10 | ndcg@100 | **liked_ndcg@10** | liked_r@10 | liked_r@100 | r@10 | iter | sec |
+|---|---|---|---|---|---|---|---|---|---|
+| **lrank_t20_gainLin** | lambdarank t20, label_gain=[0,1,2,3,4] | **.7134** | .6078 | .5567 | .2993 | .7196 | .2116 | 1995 | 530 |
+| lrank_t20_gainExp | lambdarank t20, gain=[0,3,7,15,31] | .6996 | .6013 | .5608 | .3019 | .7217 | .2084 | 2609 | 661 |
+| **xendcg_lr03** | rank_xendcg, lr=0.03 | .6982 | .6012 | **.5632** | **.3057** | .7201 | .2102 | 3995 | 488 |
+| xendcg_es10 | rank_xendcg, early-stop ndcg@10 only | .6981 | .6012 | .5627 | .3045 | .7195 | .2095 | 2964 | 362 |
+| xendcg_l127 | rank_xendcg, num_leaves=127 | .6963 | .6000 | .5614 | .3044 | .7188 | .2095 | 1464 | 217 |
+| xendcg | rank_xendcg (winner cũ) | .6956 | .6005 | .5609 | .3038 | .7200 | .2089 | 1983 | 243 |
+| lrank_t50 | lambdarank truncation 50 | .6955 | .6007 | .5593 | .3021 | .7218 | .2082 | 1570 | 557 |
+| xendcg_ff09 | rank_xendcg, feature/bagging .9 | .6955 | .6004 | .5610 | .3038 | .7195 | .2092 | 1917 | 264 |
+| lrank_t30 | lambdarank truncation 30 | .6950 | .5999 | .5585 | .3012 | .7221 | .2078 | 1621 | 504 |
+| lrank_t20_l127 | lambdarank t20, num_leaves=127 | .6948 | .5985 | .5604 | .3028 | .7213 | .2075 | 1484 | 440 |
+| lrank_t20 | lambdarank truncation 20 | .6944 | .5989 | .5593 | .3011 | .7216 | .2070 | 2072 | 531 |
+| xendcg_l255_mdl50 | rank_xendcg, leaves=255, min_data=50 | .6940 | .5984 | .5598 | .3046 | .7188 | .2088 | 546 | 118 |
+| xendcg_lr10 | rank_xendcg, lr=0.1 | .6914 | .5970 | .5580 | .3024 | .7166 | .2073 | 685 | 108 |
+| lrank_t10_es10 | lambdarank t10, early-stop ndcg@10 | .6879 | .5951 | .5549 | .2997 | .7204 | .2051 | 1362 | 294 |
+| lrank_t10 | lambdarank truncation 10 | .6874 | .5953 | .5546 | .2992 | .7210 | .2047 | 1295 | 282 |
+| lrank_t20_gainTop | lambdarank t20, gain=[0,1,3,7,31] | .6803 | .5926 | .5544 | .3009 | .7216 | .2033 | 1820 | 471 |
 
 **Đọc (coarse — confirm full ở §5):**
 - 🥇 **ndcg@10**: `lrank_t20_gainLin` (label_gain **tuyến tính** [0,1,2,3,4]) dẫn rõ rệt (.7134, +.018 vs xendcg).
@@ -80,6 +80,9 @@ Pool ceiling (trần rerank, r@200 trong pool): val .6758 / test .6758. recall@2
   xếp *mọi* positive lên đầu tốt hơn. Ngược lại `gainTop` ([0,1,3,7,31], dồn grade-4) **kém nhất** (.6803).
 - 🥇 **liked_ndcg@10**: `xendcg_lr03` (lr thấp, ~4000 cây) cao nhất (.5632) + ndcg@10 hạng 3 (.6982) → **all-rounder
   tốt nhất**. Kế đến `xendcg_es10` (.5627). Nhóm xendcg (.561–.563) liked đều **cao hơn** nhóm lambdarank gainLin (.5567).
+- **liked_r@10** (recall top-10 riêng item user thật sự thích) gần như **phẳng** (.299–.306) nhưng kể cùng câu chuyện *gắt hơn*:
+  `xendcg_lr03` cao nhất (**.3057**), `lrank_t20_gainLin` (max ndcg@10) **thấp nhất** (.2993) — tức head-10 của gainLin nhồi
+  "positive bất kỳ" thay vì item ưa thích. → liked_r@10 là tín hiệu nhạy hơn liked_ndcg@10 cho mục tiêu "đẩy item user thích lên đầu".
 - ⚖️ **Căng thẳng ndcg@10 ↔ liked CÓ THẬT**: config max-ndcg@10 (gainLin) **không** phải config max-liked.
   liked thưởng item *score > u_mean* (preference-weighted); gainLin tối ưu binary-relevance → kéo "positive bất kỳ"
   lên đầu nhưng không riêng "item user thật sự thích" → liked thấp hơn nhóm xendcg.
@@ -104,29 +107,33 @@ Lý do: graded label sẵn có (10→4…) đã mã hoá đủ mức ưa thích;
 ordering tổng thể. **liked metric phản ứng với ranking tổng thể tốt hơn (lr/early-stop), KHÔNG với relabel.** →
 Giữ grading mặc định. (Kết quả âm này có giá trị báo cáo: đã thử hướng "gắn label với liked" và bác bằng số.)
 
-## 5. Việc còn lại để CHỐT (confirm full + chọn) — phiên sau
+## 5. CHỐT — confirm full + export (DONE 2026-06-18)
 
-`train_lgbm.py` có **resume-skip** (bỏ qua config có `models/<run>/row.json`); data (`train.parquet` có
-`target_score`, `pools/`) đã build → không build lại (trừ khi artifacts đổi). Confirm **2 ứng viên** trên FULL 100k:
-- `lrank_t20_gainLin` (max ndcg@10) và `xendcg_lr03` (max liked + ndcg@10 mạnh).
+User chốt **`lrank_t20_gainLin`** (ưu tiên ndcg@10). Train full 100k LOCAL 4-thread (~37', 2.949 trees) → eval → export:
 ```bash
-# xoá row.json coarse của 2 config (resume-skip đang giữ chỗ), rồi train FULL (bỏ --subset):
-rm -rf ranker/models/lrank_t20_gainLin ranker/models/xendcg_lr03
-# tạm sửa SWEEP còn 2 dòng này (hoặc thêm flag chọn) rồi:
-venv/bin/python -u ranker/src/train_lgbm.py
-venv/bin/python ranker/eval.py        # Pareto select + test report + val_cold (CHỐT)
-venv/bin/python ranker/export.py && venv/bin/python -m pytest ranker/tests -q   # → artifacts/ranker.txt + meta
+venv/bin/python ranker/eval.py --baseline-only                                 # sanity gate PASS
+# train full chỉ gainLin (train_one trực tiếp, overrides lambdarank t20 + label_gain=[0,1,2,3,4])
+venv/bin/python ranker/eval.py --models ranker/models/lrank_t20_gainLin/model.txt   # select + test + val_cold
+venv/bin/python ranker/export.py && venv/bin/python -m pytest ranker/tests -q   # → artifacts/ranker.txt + meta (16 passed)
 ```
-⚠️ Coarse train trên 25k → số full sẽ **cao hơn** (nhiều train data); xếp hạng config kỳ vọng giữ nhưng **biên
-gainLin vs xendcg_lr03 có thể đổi** — phải confirm full mới chốt.
 
-## 6. Kết luận sơ bộ (chờ confirm full)
+**Số full vs coarse 25k** (val, two-stage @ α=1.0): full nâng đều như dự đoán (nhiều train data):
 
-- Ranker trên pool `final` **hoạt động tốt**: ndcg@10 .5343→~.71, liked_ndcg@10 .3894→~.56 (vs cosine), α=1.
-- **Hai ứng viên chốt** tuỳ trọng số ndcg@10 vs liked:
-  - **`lrank_t20_gainLin`** — ndcg@10 cao nhất (.7134) nhưng liked chỉ mid (.5567, *thấp hơn* cả xendcg gốc).
-  - **`xendcg_lr03`** — liked cao nhất (.5632) + ndcg@10 .6982; **cải thiện CẢ HAI** so với winner cũ xendcg
-    (.6956/.5609). Hợp tiêu chí "ưu tiên ndcg + liked" hơn nếu không muốn hi sinh liked.
+| | coarse 25k | **full 100k** |
+|---|---|---|
+| val ndcg@10 | .7134 | **.7272** |
+| val liked_ndcg@10 | .5567 | **.5641** |
+| val liked_r@10 | .2993 | .3048 |
+| best_iteration | 1995 | 2949 |
+
+## 6. Kết luận CHỐT (pool `final`, 2026-06-18)
+
+- **Winner production = `lrank_t20_gainLin`** (lambdarank, t20, label_gain=[0,1,2,3,4], α=1.0, K=200). TEST:
+  ndcg@10 .5323→**.7231**, liked_ndcg@10 .3903→**.5615**, r@100 .5387→**.6048**, liked_r@100 .6445→**.7182**.
+- **Vượt MF ALS đã tune trên mọi metric head+mid**: ndcg@10 .7231 > MF ndcg-opt .7027 (+.020, thoải mái hơn winner v5 +.0047),
+  r@100 .6048 > .5954 (v5 còn thua chỗ này), liked_ndcg@10 .5615 ≫ .5052 (+.056). Chỉ nhường deep-recall tail (r@200 trần pool .6758).
+- **Đánh đổi đã chấp nhận**: gainLin max ndcg@10 nhưng liked nhỉnh hơn xendcg một chút khi lên full (.5641 vs coarse cho thấy
+  căng thẳng thu hẹp ở full data) — chọn gainLin vì headline đồ án ưu tiên ndcg@10, và liked vẫn ≫ MF.
 - **Relabel liked-aware / steep: bác** (không giúp liked, hại ndcg@10) → giữ grading mặc định.
-- Theo selection rule (ndcg@10 chính + liked tie-break): gainLin thắng ndcg@10 rõ → ứng viên #1; nhưng nếu coi
-  "không được tụt liked" là ràng buộc thì `xendcg_lr03` an toàn hơn. **Quyết định cuối sau confirm full.**
+- Feature importance đổi đáng chú ý so với v5: `cos_uv` leo lên #2 (label_gain tuyến tính khai thác cosine thô, không chỉ rank) — `docs/RESULTS.md §8`.
+- Cold giữ **tách kênh serve** (cosine), α=1 dìm cold → không qua blend. Còn mở: test_cold final-exam (1 lần lúc chốt toàn pipeline).

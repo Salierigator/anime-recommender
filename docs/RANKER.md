@@ -1,12 +1,10 @@
-# RANKER — GBDT rerank stage 2 (rebuild + CHỐT 2026-06-11: xendcg α=1, cold tách kênh)
+# RANKER — GBDT rerank stage 2 (CHỐT 2026-06-18: lrank_t20_gainLin α=1 trên pool `final`, cold tách kênh)
 
 > Thay thế hoàn toàn doc cũ (`legacy/docs/RANKER.md` — protocol cũ, số liệu vô giá trị).
 > Đọc kèm: `artifacts/CONTRACT.md` (schema file), `docs/DATA_SPLIT.md` (protocol gốc),
 > `ranker/CLAUDE.md` (firewall + lệnh chạy).
 
-> ⚠️ Số liệu = snapshot **2026-06-11** (retriever `v5_hist64_ep2` → ranker `xendcg_lr05_l63`). Retriever còn tune → mỗi lần best.pt đổi phải chạy lại loop §9, số sẽ đổi theo; số mới nhất: root `PROGRESS.md`. Tổng hợp mọi kết quả + bản đồ nguồn từng con số: `docs/RESULTS.md`. Protocol/kiến trúc/quyết định thiết kế thì ổn định.
->
-> 🔴 **MISMATCH hiện tại (2026-06-17)**: retriever đã chốt `final` (no synopsis) và **re-export** artifacts (vectors mới: warm pool r@200 .6758, cosine ndcg@10 .5323 — `docs/RESULTS.md §3b`). `ranker.txt` vẫn train trên pool `v5_hist64_ep2` cũ → mọi số two-stage dưới đây STALE. **Việc tiếp**: chạy lại loop §9 (build_eval → gate → build_train → Colab → eval → export) trên pool `final`.
+> ✅ **CHỐT 2026-06-18 trên pool `final`**: retriever `final` (no synopsis) → ranker **`lrank_t20_gainLin`** (lambdarank t20, label_gain=[0,1,2,3,4], α=1, K=200, full 100k, 2.949 trees). Số §7 đã khớp `final` (test ndcg@10 .7231 / liked_ndcg@10 .5615). Tổng hợp + bản đồ nguồn từng con số: `docs/RESULTS.md`; quá trình sweep 20 config: `docs/RANKER_EXPERIMENTS.md`. Nếu best.pt retriever đổi lại → chạy loop §9 (build_eval → gate → build_train → train → eval → export). Protocol/kiến trúc ổn định.
 
 ## 1. Vai trò & kiến trúc
 
@@ -110,30 +108,26 @@ bố từ đầu). Lưu ý: số val_cold vì thế KHÔNG so được với ran
 - val_cold: rerank pool cold của val (debug, được phép). test warm: report sau khi chốt
   winner. test_cold: final exam.
 
-## 7. Kết quả CHỐT (2026-06-11 — Colab runs, full 100k user)
+## 7. Kết quả CHỐT (2026-06-18 — train full 100k LOCAL, pool `final`)
 
-Production: **`xendcg_lr05_l63` (rank_xendcg, lr .05, 63 leaves), α=1.0, K=200** —
-Pareto-dominate cosine cả 4 metric selection. Đã export `artifacts/ranker.txt` + meta.
+Production: **`lrank_t20_gainLin` (lambdarank, `lambdarank_truncation_level=20`, `label_gain=[0,1,2,3,4]`, 63 leaves), α=1.0, K=200**,
+2.949 trees — Pareto-dominate cosine cả 4 metric selection. Đã export `artifacts/ranker.txt` + meta.
+(Chọn từ sweep 20 config trên pool `final` — `docs/RANKER_EXPERIMENTS.md`; ưu tiên ndcg@10.)
 
-**Val (two-stage pool 200, 14,029 users) — α best mỗi model:**
+**Test (chấm sau khi chốt trên val, pool `final`):**
 
-| run | ndcg@10 | r@10 | r@100 | ndcg@100 |
-|---|---|---|---|---|
-| cosine (baseline) | .5207 | .1526 | .5146 | .4820 |
-| linear (local) | .6161 @ α=.5 | .1773 | .5485 | .5359 |
-| nn_din (Colab GPU) | .6923 @ α=1 | .2074 | .5758 | .5838 |
-| **xendcg_lr05_l63 ★** | **.7103 @ α=1** | **.2147** | **.5801** | **.5937** |
+| | ndcg@10 | r@10 | r@100 | ndcg@100 | liked_ndcg@10 | liked_r@100 |
+|---|---|---|---|---|---|---|
+| cosine (retriever-only) | .5323 | .1681 | .5387 | .5128 | .3903 | .6445 |
+| **two-stage ★** | **.7231** | **.2178** | **.6048** | **.6126** | **.5615** | **.7182** |
 
-**Test (chấm 1 lần sau khi chốt trên val):** ndcg@10 .5155 → **.7074** (+.1919),
-r@10 .1516 → **.2137** (+.0621), r@100 .5160 → .5811, ndcg@100 .4789 → .5917.
-→ Two-stage giờ **vượt bar MF ALS** (ndcg@10 .6771) ở head precision; r@200 vẫn kẹt trần
-pool .6524 (test) — việc của retriever, không phải ranker.
+val tương ứng: ndcg@10 .5343→**.7272**, liked_ndcg@10 .3894→**.5641**, r@100 .5388→.6042.
+→ Two-stage **vượt MF ALS đã tune trên mọi metric head+mid** (ndcg@10 .7231 > MF ndcg-opt .7027; r@100 .6048 > .5954;
+liked_ndcg@10 .5615 ≫ .5052); chỉ nhường deep-recall tail (r@200 kẹt trần pool .6758 < MF .7136/.7511) — việc của retriever.
 
-Đọc bảng: GBDT > NN (−.018) > linear (−.094) > cosine — GBDT là lựa chọn đúng, NN không
-đáng phức tạp hoá serving. α=1 thắng tuyệt đối trên warm (khác ranker cũ cần α=.5):
-candidate pool-matched + label graded cho model đủ tin để override hẳn cosine. Sweep α
-per-model (GBDT/NN đơn điệu tăng theo α; linear đỉnh α=.5 rồi tụt — cần cosine làm sàn):
-`ranker/models/<run>/results.txt`, bảng gộp `docs/RESULTS.md §5`.
+**Model-class** (val, đo trên pool v5 cũ — kết luận GBDT-vs-NN-vs-linear không phụ thuộc pool): GBDT > NN_DIN .6923 > linear .6161 >
+cosine — GBDT là lựa chọn đúng, NN không đáng phức tạp hoá serving. α=1 thắng tuyệt đối trên warm: candidate pool-matched +
+label graded cho model đủ tin override hẳn cosine. Sweep α per-model + bảng gộp: `docs/RESULTS.md §5`.
 
 **Cấu hình từng model** (code: `src/train_lgbm.py`, `src/train_nn.py`, `baselines/baseline_linear.py`):
 - **GBDT (winner)**: LightGBM `rank_xendcg`, lr .05, 63 leaves, min_data_in_leaf 100,
@@ -156,10 +150,11 @@ per-model (GBDT/NN đơn điệu tăng theo α; linear đỉnh α=.5 rồi tụt
   model học suppress item thiếu stats (đúng logic warm vì cold không bao giờ là đáp án
   warm) → giết kênh cold.
 - ② *(loại)* In-list bypass (item cold giữ rank_norm(cos), warm theo pred): cold cứu về
-  .1163 nhưng warm tụt .7103 → .6434 (cold chiếm 12.5% pool warm) — thoả hiệp cả hai phía.
+  .1163 nhưng warm tụt (cold chiếm 12.5% pool warm) — thoả hiệp cả hai phía. (Ablation đo trên pool v5;
+  quyết định thiết kế giữ nguyên cho `final` — không re-run vì cơ chế α=1-dìm-cold không đổi.)
 - ③ **(CHỐT) Tách kênh**: main list = rerank α=1 trên candidate **warm-only** (lọc
-  `is_cold` trước rerank → warm giữ nguyên .7103); item cold phục vụ **section riêng**
-  xếp theo cosine retriever (giữ nguyên .1572 — lợi thế cấu trúc two-tower). Zero regress
+  `is_cold` trước rerank → warm giữ nguyên .7272 val); item cold phục vụ **section riêng**
+  xếp theo cosine retriever (`final` val_cold ndcg@10 .1398 — lợi thế cấu trúc two-tower). Zero regress
   cả hai phía; mỗi stage làm đúng việc của nó; service hiển thị 2 khối ("Gợi ý cho bạn"
   + "Anime mới cho bạn").
 
