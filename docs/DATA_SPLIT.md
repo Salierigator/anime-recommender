@@ -75,7 +75,7 @@ Quan hệ tập hợp (per eval user): `query ⊔ support = positive-warm` (chia
 | `val` | 751.026 | 14.029¹ | **vòng train Colab eval tập này** — chọn epoch/early-stop, headline `val recall@200` |
 | `test` | 748.751 | 14.250¹ | **bảng leaderboard sort theo `test_recall@200`** — so sánh run/baseline warm |
 | `val_cold` | 150.335 | 8.388 | debug/tuning cold (chạy tay, cell 10 notebook) |
-| `test_cold` | 145.691 | 8.510 | **FINAL EXAM — chấm đúng 1 lần khi chốt model** |
+| `test_cold` | 145.691 | 8.510 | **FINAL EXAM — ✅ đã chấm 1 lần (2026-06-18)**: cosine ndcg@10 .1397 / r@200 .4710 (khớp val_cold → generalize) — `docs/RESULTS.md §7` |
 
 ¹ users có ≥1 warm query (user `n_warm < 2` không có warm query nhưng vẫn có thể có cold query).
 

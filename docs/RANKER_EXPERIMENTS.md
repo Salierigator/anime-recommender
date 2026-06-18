@@ -136,4 +136,4 @@ venv/bin/python ranker/export.py && venv/bin/python -m pytest ranker/tests -q   
   căng thẳng thu hẹp ở full data) — chọn gainLin vì headline đồ án ưu tiên ndcg@10, và liked vẫn ≫ MF.
 - **Relabel liked-aware / steep: bác** (không giúp liked, hại ndcg@10) → giữ grading mặc định.
 - Feature importance đổi đáng chú ý so với v5: `cos_uv` leo lên #2 (label_gain tuyến tính khai thác cosine thô, không chỉ rank) — `docs/RESULTS.md §8`.
-- Cold giữ **tách kênh serve** (cosine), α=1 dìm cold → không qua blend. Còn mở: test_cold final-exam (1 lần lúc chốt toàn pipeline).
+- Cold giữ **tách kênh serve** (cosine), α=1 dìm cold → không qua blend. ✅ test_cold final-exam đã chấm 1 lần (2026-06-18): cosine ndcg@10 .1397 / r@200 .4710 (khớp val_cold, generalize); blend α=1 → ndcg@10 .0000 (xác nhận tách kênh) — `docs/RESULTS.md §7` + `docs/RANKER.md §7`.

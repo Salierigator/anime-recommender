@@ -2,7 +2,8 @@
 
 > Nguồn viết đồ án cho phần **thử nghiệm chọn model retriever cuối cùng**. Bổ sung cho
 > `TWO_TOWER_MODEL.md` (kiến trúc + protocol eval) và `DATA_SPLIT.md` (split). Số liệu từng run
-> nằm ở Drive `recommender_train_colab/runs.csv` + `runs/v5/<run_name>/{row,config,history}.json`;
+> nằm ở Drive `recommender_train_colab/runs.csv` + `runs/v5/<run_name>/{row,config,history}.json`
+> (bản local snapshot warm+cold: `retriever/runs/{runs,cold_runs}.csv`);
 > tổng hợp số chốt: `RESULTS.md`. Code: `retriever/src/{config,data,model,train,search}.py`,
 > `retriever/data_prep/07_synopsis_emb.py`, `retriever/train.ipynb`.
 >

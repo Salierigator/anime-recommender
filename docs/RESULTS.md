@@ -17,13 +17,13 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 | Cần số gì | File nguồn (máy sinh) | Ghi chú |
 |---|---|---|
 | **Retriever full-catalog, serve-path** (warm val/test + cold val) — số CHÍNH thức để báo cáo | `artifacts/eval_reference.json` | do `retriever/test_export.py` đo QUA artifacts (row H→OOV) |
-| Retriever theo checkpoint — so run-vs-run khi tune | bảng v5 trong `PROGRESS.md` + leaderboard `runs.csv` (Drive) + `artifacts/CONTRACT.md` (val của best.pt) | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
-| **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv` + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
+| Retriever theo checkpoint — so run-vs-run khi tune | bảng v5 trong `PROGRESS.md` + leaderboard `runs.csv`/`cold_runs.csv` (Drive; bản local: `retriever/runs/`) + `artifacts/CONTRACT.md` (val của best.pt) | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
+| **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
 | Baselines retriever (TEST warm + cold) | `retriever/baselines/*.txt` | phương pháp: `docs/BASELINES.md` |
 | Ranker per-model: **sweep α** + val + cold diagnostic | `ranker/models/<run>/results.txt` (+ `row.json`: hyperparam, train_sec) | CHỈ VAL — kỷ luật giữ test sạch |
 | Ranker leaderboard mọi run Colab | `ranker_runs.csv` (Drive) | ngoài repo |
 | **Two-stage CHỐT**: val + test + cold + pool ceiling + feature importance + provenance | `artifacts/ranker_meta.json` (bản ghi lúc chọn: `ranker/models/eval_selection.json`) | test chấm đúng 1 lần sau khi chốt trên val |
-| test_cold (cold final) | **CHƯA TỒN TẠI** — final exam | chấm 1 lần lúc chốt toàn pipeline: `retriever/export.py --final-exam` → `ranker/eval.py --final-exam` |
+| test_cold (cold final) | ✅ **đã chấm 1 lần 2026-06-18** → `ranker/models/eval_selection.json::{baseline_test_cold, test_cold_metrics}` (số: §7) | held-out, chấm qua `retriever/export.py --final-exam` → `ranker/eval.py --final-exam`; file queries đã xoá lại để giữ kỷ luật |
 
 **Trả lời nhanh "kết quả test ở đâu":**
 - *Retriever-only (test, full catalog)* = `eval_reference.json::test_warm` (hiện = `final`: r@100 .5387, r@200 .6758, ndcg@10 .5323). Nó ≡ hàng `baseline_test` (cosine) trong `ranker_meta.json` **by construction** (pool two-stage = top-200 cosine, recall/ndcg@K trong pool ≡ full ranking khi K ≤ 200; sanity gate ép trùng trong 2e-3). ✅ **Đã trùng** sau khi retrain ranker trên `final` (cosine test r@100 .5387 / ndcg@10 .5323).
@@ -53,7 +53,7 @@ Config thắng (nguồn: PROGRESS + CONTRACT): d=128, MLP [256], use_item_id (id
 | warm **test** | .1516 | .3847 | .5160 | .6524 | .8164 | .5155 | .4789 | 14,250 |
 | **cold val** (val_cold) | .0767 | .2070 | .2925 | .3881 | .5471 | .1572 | .1926 | 8,388 |
 
-Cold thêm pooled hitrate (150.335 pairs): @10 .0720 · @100 .2964 · @200 .4074 · @500 .5881. test_cold: chưa chấm (final exam).
+Cold thêm pooled hitrate (150.335 pairs): @10 .0720 · @100 .2964 · @200 .4074 · @500 .5881. (test_cold = final exam: chấm trên config `final`, không phải v5 này — xem §7.)
 
 So run-vs-run v5 (checkpoint-path, WARM TEST, Colab — chỉ để thấy lever nào ăn):
 
@@ -76,7 +76,7 @@ Config CHỐT (2026-06-17): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, 
 | warm **test** | .1681 | .4032 | .5387 | .6758 | .8359 | .5323 | .5128 | .5665 | 14,250 |
 | **cold val** (val_cold) | .0710 | .2287 | .3373 | .4664 | .6465 | .1398 | .2018 | .2411 | 8,388 |
 
-Cold thêm pooled hitrate (150.335 pairs): @10 .0721 · @100 .3461 · @200 .4710 · @500 .6478. test_cold: chưa chấm (final exam). So serve-path `final` vs serve-path `v5_hist64_ep2` (§3): warm pool recall@200 .6758 > .6524, cosine ndcg@10 .5323 > .5155 → pool feeding ranker **tốt hơn** mốc đã cho .7074; cold recall@200 .4664 ≫ .3881.
+Cold thêm pooled hitrate (150.335 pairs): @10 .0721 · @100 .3461 · @200 .4710 · @500 .6478. test_cold: ✅ **đã chấm 1 lần** (held-out, §7: cosine r@100 .3414 / r@200 .4710 / ndcg@10 .1397 — khớp val_cold, generalize). So serve-path `final` vs serve-path `v5_hist64_ep2` (§3): warm pool recall@200 .6758 > .6524, cosine ndcg@10 .5323 > .5155 → pool feeding ranker **tốt hơn** mốc đã cho .7074; cold recall@200 .4664 ≫ .3881.
 
 > ℹ️ **Checkpoint-path khác serve-path** (đặc thù `final`): xem cảnh báo §2 — serve-path ndcg@10 (.5323) cao hơn checkpoint-path (.4242) do `history_source=embed` + H-noise lúc eval-train. Bảng ablation OFF/ON dưới là **checkpoint-path** (run-vs-run, để so synopsis trên cùng đường đo).
 
@@ -94,7 +94,7 @@ Cold thêm pooled hitrate (150.335 pairs): @10 .0721 · @100 .3461 · @200 .4710
 | **`final` (OFF)** ★ | .3374 | .4664 | .5387 | .8234 | .1398 |
 | `final_syn` (ON, bị bác) | .2546 | .3515 | .3905 | .7576 | .1494 |
 
-synopsis OFF thắng cold rõ rệt (recall@200 **+.115**, liked_recall@200 +.148) trong khi chỉ kém warm chút (recall@200 −.010) — head-precision warm là việc của ranker. Vì cold serve = cosine trực tiếp (tách kênh, §7), cold gain chảy thẳng ra "Anime mới". Ablation đầy đủ + cơ chế: `docs/SYNOPSIS_EMB.md`; loss ablation (logQ/τ/β/m_hardneg): `docs/EXPERIMENTS.md §4`. (test_cold = final exam, **chưa chấm**.)
+synopsis OFF thắng cold rõ rệt (recall@200 **+.115**, liked_recall@200 +.148) trong khi chỉ kém warm chút (recall@200 −.010) — head-precision warm là việc của ranker. Vì cold serve = cosine trực tiếp (tách kênh, §7), cold gain chảy thẳng ra "Anime mới". Ablation đầy đủ + cơ chế: `docs/SYNOPSIS_EMB.md`; loss ablation (logQ/τ/β/m_hardneg): `docs/EXPERIMENTS.md §4`. (test_cold = final exam: ✅ đã chấm 1 lần, §7.)
 
 ## 4. Baselines retriever (TEST — chi tiết phương pháp: `docs/BASELINES.md`)
 
@@ -164,6 +164,15 @@ So bar MF ALS **đã tune** (full catalog, test — `docs/BASELINES.md §5`): tw
 | ③ **kênh riêng theo cosine (CHỐT)** | **.1398** — zero regress (= cosine retriever `final`, §3b) |
 
 α=1 dìm cold tận đáy (val_cold ndcg@10 .1398→.0002, r@100 .3373→.0087) vì model học trên pool warm-only → quyết định **tách kênh serve** giữ nguyên: cold (`is_cold`) xếp theo cosine retriever, KHÔNG qua blend. Kênh cosine cold per-K: §3b hàng cold val (`final`: r@100 .3373 / r@200 .4664 / ndcg@10 .1398). So sánh cấu trúc: two-tower cold r@200 **.4664** trong khi MF/KNN/popular = 0 by construction — claim "gợi ý được anime mới" của đồ án.
+
+**Held-out — test_cold final exam (chấm ĐÚNG 1 lần 2026-06-18, K=200 α=1; nguồn `eval_selection.json::{baseline_test_cold, test_cold_metrics}`):**
+
+| test_cold (8.510 users; liked n=6.341) | r@10 | r@100 | r@200 | ndcg@10 | ndcg@100 | hit@100 | hit@200 | liked_r@100 | liked_r@200 | liked_ndcg@10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ③ kênh phục vụ = cosine retriever (CHỐT) | .0751 | **.3414** | **.4710** | **.1397** | .2009 | .3492 | .4766 | **.4135** | **.5484** | **.0957** |
+| ① cold ép qua blend α=1 (diagnostic) | .0000 | .0099 | .4710 | **.0000** | .0053 | .0251 | .4766 | .0118 | .5484 | .0000 |
+
+Số kênh cosine khớp val_cold (r@100 .3373 / r@200 .4664 / ndcg@10 .1398; liked_r@100 .4074 / liked_ndcg@10 .0920) → **generalize, không overfit**; blend α=1 lặp lại đúng hiện tượng dìm cold (.1398→.0002 val ≈ .1397→.0000 test). ⇒ chất lượng cold user thực tế thấy = cosine **.1397** ndcg@10 / **.3414** r@100 / liked_r@100 **.4135**. Đây là **lần chấm cuối** test_cold của toàn pipeline (file `eval_queries_test_cold.parquet` đã xoá lại giữ kỷ luật). Liked + pooled-hitrate đầy đủ trong `eval_selection.json::{baseline_test_cold, test_cold_metrics}`. *(Diagnostic "cold-item-only / honly" — candidate giới hạn trong 1.142 item H — KHÔNG nằm trong final exam; chỉ đo trên val_cold ở retriever notebook → `retriever/runs/cold_runs.csv` cột `cold_honly_recall@K`.)*
 
 ## 8. Feature importance (gain, LightGBM winner — `ranker_meta.json::feature_importance_gain`)
 
