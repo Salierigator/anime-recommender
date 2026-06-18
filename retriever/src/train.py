@@ -1,4 +1,4 @@
-"""Training loop Two-Tower retrieval (xem plan.md, docs/TRAIN_DATA.md §6).
+"""Training loop Two-Tower retrieval (xem docs/TRAIN_DATA.md §6).
 
 fit(cfg): build artifact + model, train InfoNCE+logQ+hard-neg, eval cold-by-user, checkpoint.
 CLI: `python model/train.py --smoke` chạy nhanh trên subset để verify pipeline.

@@ -1,4 +1,4 @@
-"""Kiến trúc Two-Tower (xem plan.md). Module importable.
+"""Kiến trúc Two-Tower (xem docs/TWO_TOWER_MODEL.md). Module importable.
 
 ItemTower: 9 feature item -> concat -> MLP -> L2-norm -> [*, d].
 UserTower: pooled-history (mean cached item-vec, rỗng -> h_empty learned) ⊕ gender ⊕ joined

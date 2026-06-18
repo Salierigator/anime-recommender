@@ -1,4 +1,4 @@
-"""Config cho Two-Tower retrieval (xem plan.md / docs/TRAIN_DATA.md).
+"""Config cho Two-Tower retrieval (xem docs/TRAIN_DATA.md).
 
 Mọi hyperparam để tune nằm trong TwoTowerConfig — chỉnh từ notebook rồi truyền vào
 data/model/train. Feature vocab+dim KHÔNG hard-code ở đây: đọc từ feature_spec.json.
