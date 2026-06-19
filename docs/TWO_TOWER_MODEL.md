@@ -2,7 +2,10 @@
 
 Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol eval**. Ăn artifacts `retriever/train-data/` (xem `docs/TRAIN_DATA.md`; split + support/query: `docs/DATA_SPLIT.md`). Baselines so sánh: `docs/BASELINES.md`.
 
-> ⚠️ Số liệu = snapshot **2026-06-11** (`v5_hist64_ep2`). Config đã **chốt `final` (no synopsis, 2026-06-17)** và **re-export xong** — `best.pt`/`artifacts/` = `final` (serve-path official `docs/RESULTS.md §3b`); còn lại retrain ranker. Số mới nhất + trạng thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: `docs/RESULTS.md`. Kiến trúc/protocol trong file thì ổn định.
+> Config đã **chốt `final` (no synopsis, 2026-06-17)** và **re-export xong** — `best.pt`/`artifacts/` =
+> `final` (serve-path official [RESULTS.md §3b](RESULTS.md)); ranker cũng đã retrain trên pool `final`
+> (2026-06-18) → pipeline đồng bộ. Giá trị config chốt: §6 (khối "Config `final`"). Số mới nhất + trạng
+> thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: [RESULTS.md](RESULTS.md). Kiến trúc/protocol ổn định.
 
 ---
 
@@ -41,7 +44,7 @@ Convention: import flat, CWD = `retriever/src/`. Tests: `venv/bin/python -m pyte
 ## 4. Batch (collate)
 
 Mỗi example `(user_idx, pos)`. Batch B:
-- **History**: sample `train_hist_len` (32) vị trí từ **full list** của user (with-replacement khi list > L — dup nhẹ chấp nhận để vectorize; ngắn hơn → lấy hết + pad); gỡ anchor bằng mask; `hist_dropout` (12%) bỏ trọn history → h_empty. Mỗi step thấy tổ hợp history khác nhau (augmentation), item đuôi của heavy user cũng được vào history.
+- **History**: sample `train_hist_len` (config `final`: 128) vị trí từ **full list** của user (with-replacement khi list > L — dup nhẹ chấp nhận để vectorize; ngắn hơn → lấy hết + pad); gỡ anchor bằng mask; `hist_dropout` (12%) bỏ trọn history → h_empty. Mỗi step thấy tổ hợp history khác nhau (augmentation), item đuôi của heavy user cũng được vào history.
 - **Hard-neg**: sample m phân biệt từ `hard_neg_ids` (−H) của chính user; thiếu → PAD + mask; 0 → loss thuần in-batch.
 - **`max_examples_per_user`** (None=off): mỗi epoch resample ≤C example/user (lexsort vectorized, tất định theo epoch) — align trọng số train (∝n_pos, mean ~270) với eval (đều per user), epoch ngắn ~4×.
 
@@ -60,13 +63,27 @@ InfoNCE + logQ + τ + **`logq_alpha`**: `s_in − α·logq[pos]` (α=1 full, 0 t
 | Train | `lr`(1e-3), `cosine_lr`(F — bật = cosine-anneal lr về 0 theo tổng step, đáng bật khi train nhiều epoch), `weight_decay`(0), `batch_size`(4096), `epochs`, `hist_dropout`(.12), `m_hardneg`(3), **`train_hist_len`(32)**, **`max_examples_per_user`(None)**, `cache_refresh_steps`(300) |
 | Eval | **`eval_ks`([10,50,100,200,500])**, **`headline_k`(200)**, **`eval_history_cap`(1024)**, `eval_split`(val), `eval_every_steps`(0) |
 
+(Số trong ngoặc = **default của `TwoTowerConfig`**, KHÔNG phải config chốt.)
+
+**Config `final` (chốt 2026-06-17 — đè default ở trên):** `d=128`, `mlp_hidden=[256]`,
+`use_item_id=True`, `id_dim=128`, `id_dropout=0.15`, `history_pool=mean`, `score_pool=none`,
+**`history_source=embed`**, `train_hist_len=128`, `tau=0.07`, `beta=1.0`, `logq_alpha=1.0`,
+`optimizer=adam`, `lr=1e-3`, `weight_decay=0`, `batch_size=16384`, `epochs=10`, `hist_dropout=0.12`,
+`m_hardneg=5`, `eval_history_cap=1024`, `headline_k=200`, **`use_synopsis=False`**. Best step =
+**31500** (epoch 7). Nguồn: `retriever/runs/runs.csv` row `final` + `artifacts/CONTRACT.md`. Vì sao
+các lựa chọn này (logQ α=1, τ.07, β/m_hardneg trơ, synopsis OFF): [EXPERIMENTS.md](EXPERIMENTS.md)
++ [SYNOPSIS_EMB.md](SYNOPSIS_EMB.md).
+
 ## 7. Protocol eval (`metrics.py`) — phần quan trọng nhất
+
+> Định nghĩa chuẩn support/query/seen-mask/trần recall@K: [DATA_SPLIT.md §4–8](DATA_SPLIT.md) (owner).
+> Phần dưới mô tả cách `metrics.py` hiện thực protocol đó cho retriever.
 
 1. **Seen-mask**: mask = `seen(user) − query_đang_chấm` (`build_masks`; seen từ `eval_seen.parquet`, MỌI status kể cả PTW — khớp serving filter cả list). Query ⊆ seen nên tuyệt đối không mask thẳng seen.
 2. **2 slice**:
    - **Warm** (`examples val/test`): tuning + chọn checkpoint (`recall@headline_k` trên val). Cache warm (id thật).
    - **Cold** (`examples {val,test}_cold`): `run_cold_eval` — refresh cache `cold_mask` (H → id OOV, content thật) rồi rank **full-catalog**; thêm chế độ `h_only` (candidate chỉ H — diagnostic content thuần, tách khỏi cạnh tranh warm-vs-cold). **test_cold = final exam, chấm 1 lần lúc cuối**; val_cold để debug. KHÔNG nằm trong train loop.
-3. **Metrics**: recall@K/ndcg@K mean-per-user; cold thêm **pooled hitrate@K** (= tổng hit / tổng pairs — slice mỏng nên per-user noisy) + `n_users`/`n_pairs`. History eval = prefix `eval_history_cap` (list đã sort score desc). Noise floor: chênh <~0.004 r@100 trên ~14k user = không kết luận.
+3. **Metrics**: recall@K/ndcg@K mean-per-user; cold thêm **pooled hitrate@K** (= tổng hit / tổng pairs — slice mỏng nên per-user noisy) + `n_users`/`n_pairs`. History eval = prefix `eval_history_cap` (list đã sort score desc). Noise floor: chênh <~0.004 r@100 trên ~14k user = không kết luận. **liked-metric** (report-only): khi truyền `query_scores`, thêm `liked_recall@K`/`liked_ndcg@K` trên cùng ranking, chỉ tính query "liked" (score≥1 & > mean support của user) — định nghĩa + lý do [LIKED_METRIC.md](LIKED_METRIC.md).
 4. Baselines (`retriever/baselines/`) dùng đúng harness này (`_eval.py` mirror `metrics.evaluate`): random/popular/content/itemknn/mf (warm) + random/content/**meta_popular** (cold); popular/mf/itemknn cold = N/A by construction (không score được item ngoài train — ghi rõ trong .txt, không bịa số).
 
 ## 8. Invariants padding/masking/OOV (test ở `retriever/tests/`)
@@ -102,4 +119,31 @@ venv/bin/python retriever/export.py && venv/bin/python retriever/test_export.py 
 - **Eval protocol cho ranker**: `eval_queries_{val,test,val_cold}.parquet` + `eval_seen.parquet` + `users_history.parquet` (MỌI user, history FULL — ranker không stream ratings.csv). `eval_queries_test_cold` (final exam) CHỈ export khi `--final-exam`, default xoá file cũ để harness ranker không chấm nhầm.
 - `reconcile_spec_to_ckpt()`: nếu spec local đã regenerate khác lúc train (vd vocab joined đổi) → ép vocab theo shape checkpoint, in cảnh báo (không nuốt im).
 
-`retriever/test_export.py` validate firewall-faithful: dựng user-encoder **thuần từ artifacts** (user_tower.pt + item_vectors.npy — KHÔNG load best.pt để encode, đúng như service sẽ làm), assert invariants các file ranker (test_cold vắng mặt, users_history phủ đúng user_split, query∩history=∅, query⊆seen, cold query đều `is_cold`, history sort desc), rồi chấm lại đủ protocol warm val/test + val_cold và ghi **`eval_reference.json`** — mốc cho sanity gate của ranker (`ranker/eval.py --baseline-only`). Số qua artifacts lệch nhẹ số checkpoint (row H = OOV) — đó là chủ đích serve-path.
+`retriever/test_export.py` validate firewall-faithful: dựng user-encoder **thuần từ artifacts** (user_tower.pt + item_vectors.npy — KHÔNG load best.pt để encode, đúng như service sẽ làm), assert invariants các file ranker (test_cold vắng mặt, users_history phủ đúng user_split, query∩history=∅, query⊆seen, cold query đều `is_cold`, history sort desc), rồi chấm lại đủ protocol warm val/test + val_cold và ghi **`eval_reference.json`** — mốc cho sanity gate của ranker (`ranker/eval.py --baseline-only`).
+
+### 10.1 Hai bộ số của CÙNG model `final` — đọc cho đúng (quan trọng)
+
+Cùng một retriever `final` được đo bằng **hai đường khác nhau**, cho hai bộ số — đừng trộn lẫn:
+
+| | Checkpoint-path (đo lúc train) | Serve-path (qua artifacts) — **OFFICIAL** |
+|---|---|---|
+| Nguồn | `retriever/runs/runs.csv` (đo trong lúc train) | `artifacts/eval_reference.json` (`test_export.py` re-encode thuần từ artifacts) |
+| Encode | UserTower in-training | user-encoder dựng lại từ `user_tower.pt`+`item_vectors.npy` (item cold = id→OOV), đúng đường service chạy |
+| test_warm recall@200 | .6852 | **.6758** |
+| test_warm ndcg@10 | .4242 | **.5323** |
+
+- **Số OFFICIAL = serve-path** (`eval_reference.json`): đây là số hệ thống thật tạo ra lúc serve, và cũng
+  là **baseline cosine + trần recall@200 = .6758** mà ranker kế thừa (xem [RESULTS.md §3b/§6](RESULTS.md)).
+- recall@200 hai đường gần khớp (.6852 vs .6758). **ndcg@10 chênh ngược chiều, lớn hơn** (.4242 <
+  .5323) — cơ chế (xem [RESULTS.md §2](RESULTS.md)): `final` train `history_source=embed`, lúc eval-train
+  (checkpoint-path) 1.142 row cold-H encode bằng **id thật chưa train = vector noise** → một số lọt lên
+  **đầu** ranking làm distractor → dìm ndcg@10; serve-path encode H bằng **id→OOV (content)** bớt distractor
+  đầu bảng → ndcg@10 phục hồi (.5323), còn recall@200 hơi giảm (content-H là distractor "hợp lý").
+- **Hệ quả thực tế: so sánh model dùng số SERVE-PATH / POOL** — chúng cùng một thang đo ở **K≤200**
+  (baseline cosine trùng tới ~1e-15 giữa serve-path full-catalog `eval_reference.json` và pool
+  `ranker_meta.json::baseline_test`; by construction top-K ⊆ pool — [RESULTS.md §1](RESULTS.md)). Vì vậy
+  baselines retriever ([BASELINES.md](BASELINES.md)), retriever serve-path (§3b / `eval_reference.json`) và
+  two-stage + cosine pool ([RESULTS.md §6](RESULTS.md)) **so trực tiếp được** ở head/mid. Số
+  **checkpoint-path** (`runs.csv`, vd ndcg@10 .4242) chỉ để so run-vs-run lúc train — **KHÔNG** đem so với
+  baseline/pool. So two-stage vs MF hợp lệ ở K≤200; khác biệt *cơ sở* chỉ ở **recall@200+** (MF retrieve
+  full catalog vs two-stage kẹt trần pool .6758 = candidate-generation, việc của retriever).

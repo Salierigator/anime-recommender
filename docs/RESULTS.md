@@ -2,7 +2,10 @@
 
 Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / baselines) + chỉ rõ **số nào lấy từ file nào** và **vì sao có 2 biến thể số retriever**. Đây là file tổng hợp — số gốc luôn nằm trong các file máy-sinh được liệt kê ở §1.
 
-> ⚠️ Snapshot **2026-06-11**: retriever `v5_hist64_ep2` (2 epoch) + ranker `xendcg_lr05_l63`. Retriever còn tune trên Colab → mỗi lần best.pt đổi, TOÀN BỘ số ở đây đổi theo (chạy lại loop `docs/RANKER.md §9` rồi cập nhật file này). Trạng thái mới nhất: root `PROGRESS.md`.
+> Trạng thái **2026-06-18**: pipeline đồng bộ trên `final`. Số CHÍNH thức = §3b (retriever serve-path) +
+> §6 (two-stage) + §7 (cold final-exam). §3 (retriever v5) + §5 (model-class pool v5) giữ làm **bằng chứng
+> lịch sử**, đã gắn nhãn rõ. Nếu best.pt đổi → chạy loop `docs/RANKER.md §9` rồi cập nhật file này.
+> ⚠️ Hai đường đo retriever (checkpoint-path vs serve-path) — đọc §2 trước khi trích số.
 >
 > 🔴 **CHỐT `final` (no synopsis) — 2026-06-17**: config retriever cuối = **`final`** (`history_source=embed`, `train_hist_len=128`, 10 epoch, d128, τ.07, logQ α=1, **synopsis OFF**), **ưu tiên cold**. Synopsis (`final_syn`) đã test on/off và **bị bác** (warm↑ nhưng cold↓ — `docs/SYNOPSIS_EMB.md`). Số warm/cold của `final`: **§3b** dưới (checkpoint-path).
 >
@@ -76,7 +79,7 @@ Config CHỐT (2026-06-17): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, 
 | warm **test** | .1681 | .4032 | .5387 | .6758 | .8359 | .5323 | .5128 | .5665 | 14,250 |
 | **cold val** (val_cold) | .0710 | .2287 | .3373 | .4664 | .6465 | .1398 | .2018 | .2411 | 8,388 |
 
-Cold thêm pooled hitrate (150.335 pairs): @10 .0721 · @100 .3461 · @200 .4710 · @500 .6478. test_cold: ✅ **đã chấm 1 lần** (held-out, §7: cosine r@100 .3414 / r@200 .4710 / ndcg@10 .1397 — khớp val_cold, generalize). So serve-path `final` vs serve-path `v5_hist64_ep2` (§3): warm pool recall@200 .6758 > .6524, cosine ndcg@10 .5323 > .5155 → pool feeding ranker **tốt hơn** mốc đã cho .7074; cold recall@200 .4664 ≫ .3881.
+Cold thêm pooled hitrate (150.335 pairs): @10 .0721 · @100 .3461 · @200 .4710 · @500 .6478. test_cold: ✅ **đã chấm 1 lần** (held-out, §7: cosine r@100 .3414 / r@200 .4710 / ndcg@10 .1397 — khớp val_cold, generalize). So serve-path `final` vs serve-path `v5_hist64_ep2` (§3): warm pool recall@200 .6758 > .6524, cosine ndcg@10 .5323 > .5155 → pool feeding ranker **tốt hơn** (two-stage chốt đạt ndcg@10 .7231, §6); cold recall@200 .4664 ≫ .3881.
 
 > ℹ️ **Checkpoint-path khác serve-path** (đặc thù `final`): xem cảnh báo §2 — serve-path ndcg@10 (.5323) cao hơn checkpoint-path (.4242) do `history_source=embed` + H-noise lúc eval-train. Bảng ablation OFF/ON dưới là **checkpoint-path** (run-vs-run, để so synopsis trên cùng đường đo).
 
@@ -154,7 +157,23 @@ Nguồn: `ranker/models/<run>/{results.txt,row.json}`. Mỗi model lấy α tố
 
 Liked-metric (test, 12.638 users có ≥1 liked query): liked_ndcg@10 .3903 → **.5615** (+.1712); liked_recall@100 .6445 → **.7182** (+.0737). val tương ứng: ndcg@10 .5343→**.7272**, liked_ndcg@10 .3894→**.5641**.
 
-So bar MF ALS **đã tune** (full catalog, test — `docs/BASELINES.md §5`): two-stage giờ **vượt MF ndcg-opt (f128/α1) trên TẤT CẢ metric head+mid**: ndcg@10 **.7231 > .7027** (+.0204, thoải mái hơn hẳn winner cũ +.0047), ndcg@100 .6126 > .6014, r@10 .2178 > .2087, **r@100 .6048 > .5954** (winner cũ còn thua chỗ này), liked_ndcg@10 **.5615 ≫ .5052** (+.0563), liked_r@100 .7182 > .6960. Chỉ **thua deep-recall tail**: r@200 two-stage .6758 (kẹt **trần pool** = retriever r@200) **< MF recall-opt .7511 / ndcg-opt .7136**; r@500 retriever-final .8359 < MF .8797 — tail là việc của retriever (tune tiếp / nâng K). ⚠️ **Hệ quả cho đồ án**: warm-only two-stage đã **thắng MF rõ ở head-precision + liked**, chỉ nhường tail; cộng thêm **cold-start** (§7, "Anime mới"): MF/KNN = 0 by construction còn two-tower r@200 cold .4664 ≫ content. Narrative: kết hợp recall(retriever) + precision/liked(ranker) + cold — không phải chỉ "nhỉnh MF ndcg@10".
+So bar MF ALS **đã tune** (test — `docs/BASELINES.md §5`): theo từng con số two-stage cao hơn MF ndcg-opt
+(f128/α1) ở head+mid — ndcg@10 .7231 > .7027, ndcg@100 .6126 > .6014, r@10 .2178 > .2087, r@100 .6048 >
+.5954, liked_ndcg@10 .5615 ≫ .5052, liked_r@100 .7182 > .6960 — và thua deep-recall tail (r@200 .6758 kẹt
+**trần pool** < MF .7136/.7511; r@500 .8359 < .8797).
+> ℹ️ **Cùng thang đo ở K≤200 (đọc kèm):** MF đo **full-catalog**, two-stage đo **pool** — nhưng hai harness
+> cho **CÙNG số ở K≤200**: baseline cosine trùng tới ~1e-15 giữa `eval_reference.json::test_warm` (full) và
+> `ranker_meta.json::baseline_test` (pool) — ndcg@10 .5323, r@100 .5387, r@200 .6758 (§2, by construction:
+> top-K ⊆ pool, R_total đếm cả query ngoài pool). ⇒ so two-stage vs MF ở head/mid là **sạch, cùng thang**.
+> Caveat *cơ sở* DUY NHẤT: **recall@200+** (MF retrieve full catalog vs two-stage kẹt trần pool .6758 —
+> candidate-generation, việc của retriever). (Số .4242 là **checkpoint-path lúc train** — KHÔNG dùng so
+> model; xem §2 / `TWO_TOWER_MODEL.md §10.1`.)
+
+⚠️ **Hệ quả cho đồ án**: warm-head-win vs MF đã tune là **hợp lệ** (cùng thang K≤200) — nêu được; nhưng
+narrative đầy đủ hơn là **đa mũi nhọn**: (a) **head/liked precision** (thắng cả MF đã tune lẫn chính cosine
+retriever .5323→.7231); (b) recall sâu là việc của **retriever** (two-stage kẹt trần pool, MF/K-lớn hơn);
+(c) **cold-start** (§7, "Anime mới"): MF/KNN = 0 by construction còn two-tower cold honly r@100 .6755 ≫
+content. Tức: recall(retriever) + precision/liked(ranker) + cold — KHÔNG phải chỉ "nhỉnh MF ndcg@10".
 
 ## 7. Cold — kênh serve (quyết định: tách kênh, `docs/RANKER.md §7`)
 
@@ -170,7 +189,7 @@ So bar MF ALS **đã tune** (full catalog, test — `docs/BASELINES.md §5`): tw
 | test_cold (8.510 users; liked n=6.341) | r@10 | r@100 | r@200 | ndcg@10 | ndcg@100 | hit@200 | liked_r@100 | liked_r@200 | liked_ndcg@10 |
 |---|---|---|---|---|---|---|---|---|---|
 | ③a **full-catalog** = cosine retriever toàn 22.8k (CHỐT, đè lên blend ① bên dưới) | .0751 | **.3414** | **.4710** | **.1397** | .2009 | .4766 | **.4135** | **.5484** | **.0957** |
-| ③b **honly** = cosine **chỉ rank giữa 1.142 item mới H** (= đúng UX section "Anime mới") | .1616 | **.6755** | **.8261** | **.2368** | .3786 | — | **.7306** | **.8464** | **.1681** |
+| ③b **honly** = cosine **chỉ rank giữa 1.142 item mới H** (= đúng UX section "Anime mới") | .1616 | **.6755** | **.8261** | **.2368** | .3814 | — | **.7306** | **.8464** | **.1681** |
 | ① cold ép qua blend α=1 (diagnostic — vì sao tách kênh) | .0000 | .0099 | .4710 | **.0000** | .0053 | .4766 | .0118 | .5484 | .0000 |
 
 Đọc:

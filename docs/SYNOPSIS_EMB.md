@@ -8,9 +8,9 @@
 > có thể bật lại nếu sau này phục vụ cold qua kênh khác. Bối cảnh thử nghiệm chung: `docs/EXPERIMENTS.md §1`.
 >
 > ✅ **Re-export DONE (2026-06-17)**: `best.pt`/`artifacts/` giờ là `final` (synopsis OFF — `artifacts/CONTRACT.md`
-> epoch=7 step=31500). Serve-path official của `final` đã đo (`docs/RESULTS.md §3b`). Bảng ablation dưới giữ
-> **checkpoint-path** (run-vs-run, `runs.csv`/`cold_runs.csv`) để so synopsis on/off trên cùng đường đo. Còn lại:
-> retrain ranker trên pool `final` (`docs/RANKER.md §9`).
+> epoch=7 step=31500). Serve-path official của `final` đã đo (`docs/RESULTS.md §3b`); ranker cũng đã retrain
+> trên pool `final` (2026-06-18). Bảng ablation dưới giữ **checkpoint-path** (run-vs-run, `runs.csv`/`cold_runs.csv`)
+> để so synopsis on/off trên cùng đường đo (về 2 đường đo checkpoint vs serve-path: `docs/TWO_TOWER_MODEL.md §10.1`).
 
 ## Thiết kế (đã code)
 
@@ -84,8 +84,8 @@ tín hiệu collaborative), không mở rộng vùng phủ.
 | honly_recall@200 | .8234 | .7576 | **−.0658** |
 | ndcg@10          | .1398 | .1494 | +.0096 |
 
-(test_cold = final exam, **chưa chấm** — số trên là val_cold để debug, đủ để quyết hướng vì gap rất lớn,
-vượt xa noise .004.)
+(Số trên là **val_cold** — đủ để quyết hướng vì gap rất lớn, vượt xa noise .004. `final_syn` không chấm
+test_cold; test_cold final-exam chỉ chấm 1 lần cho config `final` đã chốt — `docs/RESULTS.md §7`.)
 
 **Đọc**: synopsis làm cold **kém đi rõ rệt** ở mọi recall — ngược hẳn động cơ ban đầu ("synopsis kỳ vọng
 giúp cold nhiều nhất vì cold chỉ có content"). Chỉ ndcg@10 cold nhỉnh tí (+.0096, cùng hiệu ứng head như

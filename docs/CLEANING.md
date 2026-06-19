@@ -29,6 +29,10 @@ Doc tổng hợp cho `cleaning.ipynb` — giải thích **clean cái gì, set up
 - Numeric: `score`, `members`, `favorites`, `scored_by`, `rank`, `popularity`.
 - `mal_id` (PK), `title`, `synopsis`, `type`, `episodes`, `status`, `rating`, `source`, `start_date`.
 
+> Phân phối chi tiết từng cột (sau làm sạch) — null-rate, range/percentile, top category, đặc
+> điểm long-tail — ở [DATA_DISTRIBUTIONS.md](DATA_DISTRIBUTIONS.md). Doc này chỉ giữ phần liên
+> quan trực tiếp tới *lý do làm sạch*.
+
 **`profiles.csv`** — user metadata:
 - `username` (PK), `gender`, `birthday`, `location`, `joined`.
 - 5 cột counter aggregate (`watching`, `completed`, `on_hold`, `dropped`, `plan_to_watch`) — redundant với `ratings.csv`.
@@ -270,6 +274,9 @@ Netflix Prize cut 5–20% noise, MovieLens 1–5% — 3.43% là **bình thườn
 
 ## 11. §9 Audit findings
 
+> Phần này là audit **để xác nhận rule cleaning áp đúng** (không phải bản đồ phân phối đầy
+> đủ — cái đó ở [DATA_DISTRIBUTIONS.md](DATA_DISTRIBUTIONS.md)).
+
 ### §9a Empty-list false-zero (cleaned details, 22,821 rows)
 
 ```
@@ -366,7 +373,7 @@ Anime mất chủ yếu niche. Với <20 interactions, two-tower không học đ
 
 ### `score=0`
 
-31.5M rows (~26%) có `score=0`. **Semantics: "chưa rate"**, không phải "rate 0 điểm". Đừng nhầm khi compute mean/median — luôn filter `score > 0` cho aggregate score.
+**52.15M rows (43.45%)** có `score=0` (đo trên cleaned ratings — [DATA_DISTRIBUTIONS.md §4.2](DATA_DISTRIBUTIONS.md)). **Semantics: "chưa rate"**, không phải "rate 0 điểm". Tập trung ở `plan_to_watch` (99.4% chưa chấm) và một phần `watching/on_hold`; `completed` chỉ 16.2% score=0. Đừng nhầm khi compute mean/median — luôn filter `score > 0` cho aggregate score.
 
 ### Không có content-quality validation
 

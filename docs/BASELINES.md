@@ -112,15 +112,31 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 **Cold** (test_cold, full-catalog): content r@100 .1320 / r@200 .2177 / hit@500 .3784 (liked: lr@200 .2103 / lndcg@10 .0219) · meta_popular r@200 .0999 / hit@500 .1559 (lr@200 .1466) · random r@200 .0086 · popular/itemknn/mf = N/A.
 
-Đọc số (so với two-tower hiện tại — chi tiết `PROGRESS.md` / `docs/RESULTS.md`):
-- **Warm — MF là bar RẤT mạnh sau tune**: recall-opt MF r@200 **.7511**, ndcg-opt MF ndcg@10 **.7027**.
-  Config gốc cũ (f64/α1: .6989 / .6771) bị f128/α1 vượt cả 2 trục → MF cũ chưa ở mức tốt nhất.
-- **So với two-stage** (retriever + xendcg, test ndcg@10 **.7074**): vẫn **> MF ndcg-opt .7027** nhưng
-  biên rất sát (+.0047, trước đây +.0303 vs MF cũ .6771). Ở **tail**, MF mạnh hơn two-stage rõ rệt
-  (r@200 .7511 vs two-stage .6524, kẹt trần pool K=200) — tail recall là việc của retriever. ⇒ Lợi thế
-  thật của 2-stage **không** nằm ở "thắng MF trên warm" (giờ sát/thua tail) mà ở **cold-start**:
-- **Cold**: two-tower r@200 .3881 (val_cold) ≈ **1.8–2.2×** content (.2177 test_cold) trong khi MF/KNN/popular = **0 (N/A by construction)** — đây là claim cấu trúc mạnh nhất: không model CF cổ điển nào gợi ý được anime mới, kể cả MF đã tune.
-- liked-metric: warm `lr@k` thường > `recall` binary (item user *thật sự thích* được surface tốt hơn item chỉ-tương-tác); MF ndcg-opt lndcg@10 .5052 cao nhất bộ.
+Đọc số (so với two-stage hiện tại — chi tiết `PROGRESS.md` / `docs/RESULTS.md §5–6`):
+
+> ℹ️ **Cùng thang đo ở K≤200 (đọc trước khi so).** Baselines (gồm MF) đo bằng harness **full-catalog**
+> (`_eval.py` ≡ `retriever/src/metrics.py`, rank toàn 22.8k); two-stage đo bằng harness **pool**
+> (`ranker/src/metrics.py`, rerank top-200). Hai harness cho **CÙNG một số ở K≤200** — bằng chứng: baseline
+> cosine trùng tới ~1e-15 giữa `eval_reference.json::test_warm` (full-catalog) và
+> `ranker_meta.json::baseline_test` (pool): ndcg@10 .5323, r@100 .5387, r@200 .6758 (by construction: top-K
+> của two-stage ⊆ pool, R_total đếm cả query ngoài pool — `RESULTS.md §1`). ⇒ So "two-stage vs MF" ở
+> ndcg@10 / r@10 / r@100 / ndcg@100 / liked là **sạch, cùng thang**. Khác biệt *cơ sở* DUY NHẤT ở
+> **recall@200+**: MF retrieve toàn catalog (.7136/.7511) còn two-stage kẹt **trần pool .6758** (chỉ rerank
+> top-200) — đây là khác biệt **candidate-generation** (việc của retriever), không phải lệch đo đạc. (Số
+> .4242 ở `TWO_TOWER_MODEL.md §10.1` là **checkpoint-path lúc train**, KHÔNG dùng để so model.)
+
+- **Warm — MF là bar RẤT mạnh sau tune**: recall-opt MF r@200 **.7511**, ndcg-opt MF ndcg@10 **.7027**
+  (full-catalog). Config gốc cũ (f64/α1: .6989 / .6771) bị f128/α1 vượt cả 2 trục → MF cũ chưa tối ưu.
+- **So với two-stage** (retriever + `lrank_t20_gainLin`, test ndcg@10 **.7231**): cùng thang đo (xem ô
+  trên), two-stage **vượt MF ndcg-opt mọi metric head+mid** — ndcg@10 .7231 > .7027, r@10 .2178 > .2087,
+  r@100 .6048 > .5954, liked_ndcg@10 .5615 ≫ .5052. MF **recall-opt** đổi head lấy recall sâu (r@100
+  .6223 > .6048, r@200 .7511) nên two-stage nhường **tail**: r@200 .6758 = trần pool K=200 < MF
+  .7136/.7511 — recall sâu là việc của **retriever**, không phải ranker. ⇒ Lợi thế 2-stage: (a)
+  **head/liked precision** (thắng cả MF đã tune lẫn chính cosine retriever, .5323→.7231), (b) **cold-start**.
+- **Cold**: two-tower r@200 **.4710** (test_cold final-exam) ≈ **2.2×** content (.2177 test_cold) trong khi
+  MF/KNN/popular = **0 (N/A by construction)** — claim cấu trúc mạnh nhất: không CF cổ điển nào gợi ý được
+  anime mới, kể cả MF đã tune.
+- liked-metric: warm `lr@k` thường > `recall` binary; MF ndcg-opt lndcg@10 .5052 cao nhất trong bộ baseline.
 - recall@K bị trần lý thuyết khi user có nhiều query hơn K — đọc `docs/DATA_SPLIT.md §8` trước khi so số tuyệt đối ở K nhỏ.
 
 ## 6. Chạy lại

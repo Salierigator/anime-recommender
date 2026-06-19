@@ -28,12 +28,19 @@ Doc tổng hợp cho `retriever/data_prep/` — **build cái gì, set up thế n
 
 ## 2. Labels (nguồn duy nhất: `data_prep/prep_config.py`)
 
+> Bảng định nghĩa chuẩn positive/hard-neg/seen/support/query: [DATA_SPLIT.md §4](DATA_SPLIT.md)
+> (owner). Phần dưới giữ lý do thiết kế nhãn ở góc prep. Phân phối status/score củng cố
+> lựa chọn nhãn: [DATA_DISTRIBUTIONS.md §4](DATA_DISTRIBUTIONS.md).
+
 - **Positive** = `status ∈ {completed, watching}` & `score ∉ [1,4]` (giữ score 0 = chưa chấm và 5..10). *watching* là engagement thật; *plan_to_watch* KHÔNG vào positive (intent/hype, không phải experience).
 - **Hard-neg** = `dropped ∪ (score ∈ [1,4] mọi status)` — "bỏ dở" + "xem và ghét". Sàn tuyệt đối ở 4: KHÔNG dùng quantile per-user (score 7 = "Good" không phải negative).
 - Hai tập **rời nhau by construction** (positive đòi score∉[1,4]).
 - Đổi labels để ablate: sửa `prep_config.py` → re-run 02→06 (n_pos đổi → split membership đổi theo, chấp nhận). Định nghĩa được echo vào `feature_spec.json["labels"]`.
 
 ## 3. Split — 2 trục overlay
+
+> Sơ đồ overlay đầy đủ + bảng support/query/seen + trần recall@K: [DATA_SPLIT.md](DATA_SPLIT.md)
+> (owner). Phần dưới tóm tắt cấu hình prep thực thi split.
 
 ### 3.1 Cold-user
 Hold-out **trọn user** 90/5/5, tất định `hash(username, SEED=42) % 100`; eval cần `n_pos ≥ 11`; user 1..10 positive về train; n_pos=0 drop.
@@ -69,7 +76,7 @@ train-data/
 
 **`eval_seen.parquet`**: `user_idx`, `seen_ids(List[Int32], unique sorted)` — mọi interaction mọi status. Protocol eval: **mask = seen − query_đang_chấm** (query ⊆ seen nên không được mask thẳng seen).
 
-**`item_features.parquet`** — 9 feature encode tất định ở `01_item_features.py` (vocab map đóng băng vào `feature_spec.json` → serve encode y hệt; bucket edges copy verbatim từ `data_audit/output/`):
+**`item_features.parquet`** — 9 feature encode tất định ở `01_item_features.py` (vocab map đóng băng vào `feature_spec.json` → serve encode y hệt; bucket edges + ngưỡng vocab bám phân phối ở [DATA_DISTRIBUTIONS.md §5](DATA_DISTRIBUTIONS.md), copy verbatim từ `data_audit/output/`):
 
 | Feature | Kiểu | Encode | Vocab/width | Vào tower |
 |---|---|---|---|---|

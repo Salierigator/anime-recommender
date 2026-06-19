@@ -9,7 +9,8 @@
 ## 1. Vai trò & kiến trúc
 
 Two-stage: retriever (two-tower) trả top-K cosine → **ranker rerank** để sửa head precision
-(bar: MF ALS ndcg@10 .677 vs two-tower .51 — gap nằm ở head, đúng việc của ranker).
+(động cơ: ở head, cosine retriever yếu hơn CF mạnh — cosine ndcg@10 .5323 vs MF ALS ndcg-opt
+.7027, cùng thang đo K≤200 — gap head đúng việc của ranker).
 
 - **Model chính: LightGBM** (lambdarank-family, categorical native, group = 1 user) — train
   vài phút, model text nhỏ, retrain rẻ sau mỗi lần retriever export lại (best.pt còn đổi).
@@ -63,8 +64,8 @@ chấm qua `eval.py --final-exam` đúng 1 lần lúc chốt pipeline.
   (mirror seen−query).
 - **Label graded**: 10→4, 9→3, 7-8→2, 0/5/6→1, ngoài target→0. Drop group 0 positive
   (thực tế chỉ ~0.6% vì median query/user ~7 và pool@200 bắt ~66%).
-- Kết quả build hiện tại: 99.4k groups × 200 = 19.9M rows, pos_rate .140,
-  grade hist {1: 810k, 2: 1.19M, 3: 470k, 4: 321k}.
+- Kết quả build hiện tại (pool `final`): 99.466 groups × 200 = 19.89M rows, pos_rate **.1483**
+  (nguồn `ranker_meta.json::train_provenance`); grade hist {1: 810k, 2: 1.19M, 3: 470k, 4: 321k}.
 - Valid early-stopping = `pools/eval_val.parquet` slice 200 (label binary) — không build riêng.
 - Noise chấp nhận (documented): train user không có eval_seen → PTW/on_hold có thể thành
   false-negative trong pool train. Eval không ảnh hưởng (dùng eval_seen thật).
@@ -86,11 +87,13 @@ bị ép mal_score/scored_by/members/favorites/popularity/rank → impute-as-mis
 (anime mới lúc serve chưa có stats trưởng thành). Content/episodes/recency giữ (metadata công
 bố từ đầu). Lưu ý: số val_cold vì thế KHÔNG so được với ranker cũ (cũ leak stats tương lai).
 
-**Importance thực đo (gain, winner)**: pool_rank 124k ≫ hist_cos_max 80k ≫ log_scored_by 17k
-> u_n_rated 15k > mal_score 14k > hist_cos_top5_mean 11k; **cos_uv thô chỉ 2.4k** — model dùng
-*thứ hạng* cosine (pool_rank, chuẩn hoá per-user) thay giá trị thô. 2 feature mới đứng top
-(pool_rank #1, hist_cos_top5_mean #6); support_len/score_gap đóng góp vừa (4.3k/2.1k). Bảng
-đầy đủ + cách đọc: `docs/RESULTS.md §8`; số gốc: `ranker_meta.json::feature_importance_gain`.
+**Importance thực đo (gain, winner `lrank_t20_gainLin` — pool `final`)**: pool_rank **4.05M**
+≫ **cos_uv 673k (#2)** > hist_cos_max 397k > support_len 243k > log_favorites 162k >
+log_scored_by 126k > mal_score 102k > rank 97k > hist_cos_mean 76k > theme_aff 68k. pool_rank
+(thứ hạng cosine chuẩn hoá per-user) vẫn áp đảo, nhưng **khác winner xendcg cũ**: với label_gain
+tuyến tính [0,1,2,3,4], model khai thác thêm **cos_uv thô** (leo lên #2, trước đây ~2.4k) chứ
+không chỉ pool_rank. Bảng đầy đủ + cách đọc: `docs/RESULTS.md §8`; số gốc:
+`ranker_meta.json::feature_importance_gain`.
 
 ## 6. Eval protocol (= retriever, qua artifacts)
 
@@ -98,8 +101,8 @@ bố từ đầu). Lưu ý: số val_cold vì thế KHÔNG so được với ran
   IDCG = min(R_total, K)); R_total = tổng query kể cả ngoài pool → recall@K trong pool-D
   ≡ full ranking khi K ≤ D.
 - Pool lưu depth 500 → ablation K∈{200,500} (`eval.py --k 500`) không cần re-encode;
-  serve mặc định K=200 (trần r@200 trong pool: val .6505 / test .6524 — `ranker_meta.json::pool_ceiling`;
-  K=500 nâng trần val lên .8147 đổi lấy latency).
+  serve mặc định K=200 (trần r@200 trong pool: **val .6758 / test .6758** — `ranker_meta.json::pool_ceiling`;
+  K=500 nâng trần lên ~.834 (val) / .836 (test) đổi lấy latency — `eval_reference.json` recall@500).
 - **Sanity gate** (`eval.py --baseline-only`, tự chạy đầu mọi lần eval): cosine baseline phải
   khớp `artifacts/eval_reference.json` (số test_export đo QUA artifacts, hơi thấp hơn số
   checkpoint trong CONTRACT do row H encode OOV) trong 2e-3. Fail = dừng.
@@ -122,20 +125,27 @@ Production: **`lrank_t20_gainLin` (lambdarank, `lambdarank_truncation_level=20`,
 | **two-stage ★** | **.7231** | **.2178** | **.6048** | **.6126** | **.5615** | **.7182** |
 
 val tương ứng: ndcg@10 .5343→**.7272**, liked_ndcg@10 .3894→**.5641**, r@100 .5388→.6042.
-→ Two-stage **vượt MF ALS đã tune trên mọi metric head+mid** (ndcg@10 .7231 > MF ndcg-opt .7027; r@100 .6048 > .5954;
-liked_ndcg@10 .5615 ≫ .5052); chỉ nhường deep-recall tail (r@200 kẹt trần pool .6758 < MF .7136/.7511) — việc của retriever.
+→ **Claim chặt chẽ (cùng pool harness)**: two-stage vượt cosine baseline mọi metric head+mid
+(ndcg@10 .5323→.7231, liked_ndcg@10 .3903→.5615, r@100 .5387→.6048). So với **MF ALS đã tune**
+(cùng thang đo K≤200 — baseline cosine trùng tới ~1e-15 giữa full-catalog `eval_reference.json` và
+pool `ranker_meta.json`, `docs/TWO_TOWER_MODEL.md §10.1`): two-stage **vượt MF ndcg-opt mọi metric
+head+mid** — ndcg@10 .7231 > .7027, r@100 .6048 > .5954, liked_ndcg@10 .5615 ≫ .5052. Tail: MF mạnh
+hơn (r@200 .7136/.7511 > trần pool .6758) — candidate-generation, việc của retriever, KHÔNG phải
+lệch harness. Lợi thế vững của two-stage = head/liked precision (vs cả MF đã tune lẫn chính
+retriever) + cold-start (MF = N/A).
 
 **Model-class** (val, đo trên pool v5 cũ — kết luận GBDT-vs-NN-vs-linear không phụ thuộc pool): GBDT > NN_DIN .6923 > linear .6161 >
 cosine — GBDT là lựa chọn đúng, NN không đáng phức tạp hoá serving. α=1 thắng tuyệt đối trên warm: candidate pool-matched +
 label graded cho model đủ tin override hẳn cosine. Sweep α per-model + bảng gộp: `docs/RESULTS.md §5`.
 
 **Cấu hình từng model** (code: `src/train_lgbm.py`, `src/train_nn.py`, `baselines/baseline_linear.py`):
-- **GBDT (winner)**: LightGBM `rank_xendcg`, lr .05, 63 leaves, min_data_in_leaf 100,
-  feature/bagging_fraction .8, num_boost_round 4000 + early_stopping(100) trên ndcg nội bộ
-  của `pools/eval_val` (CHỈ để early-stop — số chính thức luôn là two-stage `metrics.py`).
-  Best iteration 1747, train ~6.4k giây Colab. Sweep Colab các trục objective
-  (lambdarank+truncation / xendcg) × lr × leaves — leaderboard `ranker_runs.csv` (Drive),
-  local chỉ giữ winner.
+- **GBDT (winner)**: LightGBM **`lambdarank`**, `lambdarank_truncation_level=20`,
+  `label_gain=[0,1,2,3,4]`, lr .05, 63 leaves, min_data_in_leaf 100, feature/bagging_fraction .8,
+  num_boost_round 4000 + early_stopping(100) trên ndcg nội bộ của `pools/eval_val` (CHỈ để
+  early-stop — số chính thức luôn là two-stage `metrics.py`). **Best iteration 2949, train
+  ~2.248 giây (~37') LOCAL 4-thread**. Sweep 20 config (objective lambdarank+truncation /
+  xendcg × label_gain × lr × leaves) chạy LOCAL → `models/leaderboard.csv`; chi tiết
+  `docs/RANKER_EXPERIMENTS.md`.
 - **NN DIN (comparator GPU)**: per candidate concat [V, U, U⊙V, 24 numeric z-scored (NaN→mean),
   5 cat emb dim 4, DIN-attention trên `hist_top64` (query = V, scaled dot)] → MLP 512→256→1;
   loss listwise softmax-CE trọng số gain `2^grade−1`; AdamW lr 1e-3, batch 32 group, 2 epoch,

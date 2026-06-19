@@ -2,7 +2,10 @@
 
 Doc kiến trúc sống: **cây thư mục + luồng hoạt động end-to-end** của recommender. File này giữ context tổng thể; chi tiết từng chặng nằm ở `docs/` và `CLAUDE.md` riêng trong mỗi mảng.
 
-> ⚠️ Số liệu trong file = snapshot **2026-06-11** (retriever `v5_hist64_ep2`, ranker `xendcg_lr05_l63`). Retriever đã **chốt config `final` (no synopsis, 2026-06-17)** và **re-export xong** (`best.pt`/`artifacts/` = `final`, serve-path official `docs/RESULTS.md §3b`); còn lại **retrain ranker** trên pool `final` (số two-stage hiện STALE). Số mới nhất + trạng thái: root `PROGRESS.md`. Kiến trúc/protocol trong file thì ổn định.
+> Trạng thái **2026-06-18**: pipeline **đồng bộ hoàn toàn** trên config/pool `final`. Retriever
+> chốt `final` (no synopsis, 2026-06-17, serve-path official [RESULTS.md §3b](RESULTS.md)); ranker
+> chốt `lrank_t20_gainLin` trên pool `final` (2026-06-18, [RESULTS.md §6](RESULTS.md)). Số liệu
+> tổng hợp + trạng thái mới nhất: root `PROGRESS.md`. Kiến trúc/protocol mô tả trong file ổn định.
 
 ---
 
@@ -11,7 +14,7 @@ Doc kiến trúc sống: **cây thư mục + luồng hoạt động end-to-end**
 Anime recommender **2-stage**, build thành 3 mảng độc lập:
 
 - **Retrieval** (`retriever/`) — Two-Tower (PyTorch) học user/item embedding chung 1 không gian, ANN top-K cosine từ ~22.8k anime. *✅ HOÀN THÀNH pipeline (data + protocol + model + baselines + export); còn tune thêm epoch/knob trên Colab — không chặn gì.*
-- **Ranking** (`ranker/`) — LightGBM rerank top-K của retriever bằng 29 feature chi tiết. *✅ CHỐT 2026-06-11: `xendcg_lr05_l63`, blend α=1, test ndcg@10 .5155 → .7074 (vượt bar MF ALS .6771); item cold tách kênh serve — chi tiết `docs/RANKER.md`.*
+- **Ranking** (`ranker/`) — LightGBM rerank top-200 của retriever bằng 29 feature chi tiết. *✅ CHỐT 2026-06-18 (pool `final`): `lrank_t20_gainLin` (lambdarank t20), blend α=1, test ndcg@10 .5323 → **.7231** (vượt MF ndcg-opt .7027), liked_ndcg@10 .5615; item cold tách kênh serve — chi tiết `docs/RANKER.md`.*
 - **Service** (`service/`) — web app: nhận user → retrieval → rerank → trả kết quả (+ Jikan/MAL cho metadata hiển thị). *🟨 Backend CLI XONG (`service/backend/recommend.py`, 3 nguồn user); FastAPI + frontend chưa.*
 
 **Chìa khoá song song hoá = `artifacts/` (firewall).** 3 mảng KHÔNG import code train của nhau; chỉ giao tiếp qua **file ổn định** trong `artifacts/` (retriever GHI; ranker GHI riêng `ranker.txt`+`ranker_meta.json`; service ĐỌC tất cả). Khi retriever có best.pt mới → re-export → ranker retrain theo loop `docs/RANKER.md §9` — service không phải đổi code.
@@ -34,7 +37,7 @@ anime-recommender/
 ├── cleaned-data/             # output cleaning (details/profiles/ratings.csv) — BLOCKED, input read-only
 ├── data-sample/              # 5 dòng đầu mỗi file — nguồn DUY NHẤT xem schema
 ├── data_audit/               # audit tầng data chung (script + output per-column)
-├── docs/                     # CLEANING · DATA_SPLIT · TRAIN_DATA · TWO_TOWER_MODEL · BASELINES · RANKER · RESULTS · EXPERIMENTS · file này
+├── docs/                     # CLEANING · DATA_DISTRIBUTIONS · DATA_SPLIT · TRAIN_DATA · TWO_TOWER_MODEL · SYNOPSIS_EMB · EXPERIMENTS · LIKED_METRIC · BASELINES · RANKER · RANKER_EXPERIMENTS · RESULTS · file này
 ├── legacy/                   # docs + kết quả cũ (gitignored, chỉ tham khảo)
 │
 ├── artifacts/                # ★ FIREWALL giữa 3 mảng (xem §4 + artifacts/CONTRACT.md tự sinh)
@@ -98,7 +101,7 @@ Schema chi tiết + version: **`artifacts/CONTRACT.md`** (tự sinh bởi export
 | `eval_queries_{val,test,val_cold}.parquet` | retriever | ranker | positive held-out (query) per slice — two-stage chấm ĐÚNG protocol retriever |
 | `eval_queries_test_cold.parquet` | retriever | ranker | **final exam** — CHỈ tồn tại khi `export.py --final-exam`; default export xoá |
 | `eval_reference.json` | retriever (`test_export.py`) | ranker | metrics cosine baseline đo QUA artifacts — sanity gate `ranker/eval.py --baseline-only` phải tái lập trước khi train |
-| `ranker.txt` | **ranker** | service | model LightGBM production (hiện: `xendcg_lr05_l63`) |
+| `ranker.txt` | **ranker** | service | model LightGBM production (hiện: `lrank_t20_gainLin`) |
 | `ranker_meta.json` | **ranker** | service | feature_names (29, đúng thứ tự), blend_alpha, k_retrieve, **cold_serving**, grading, metrics, provenance |
 | `CONTRACT.md` | retriever | tất cả | shape/dtype/version + checkpoint metrics (tự sinh) |
 

@@ -58,7 +58,7 @@ Quan hệ tập hợp (per eval user): `query ⊔ support = positive-warm` (chia
 
 **Train user (262.676):**
 - examples = toàn bộ positive-warm (67.46M pairs) — mỗi pair là 1 anchor InfoNCE.
-- history = cũng chính list đó (full, sort score desc); lúc train sample `train_hist_len=32`/anchor, và anchor đang chấm bị gỡ khỏi history để khỏi tự nhìn đáp án.
+- history = cũng chính list đó (full, sort score desc); lúc train sample `train_hist_len=128`/anchor (config `final`), và anchor đang chấm bị gỡ khỏi history để khỏi tự nhìn đáp án.
 - hard_neg ≤ 64/user, đã trừ H.
 
 **Eval user (val/test):**

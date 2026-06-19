@@ -4,9 +4,9 @@
 > (no synopsis, re-export 2026-06-17). Bổ sung cho `docs/RANKER.md` (kiến trúc + data flow + protocol)
 > và `docs/LIKED_METRIC.md` (định nghĩa liked). Mirror vai trò `docs/EXPERIMENTS.md` của retriever.
 >
-> ⚠️ **Trạng thái**: đây là phiên **EXPLORE** (2026-06-17) — chưa chốt/export. `artifacts/ranker.txt`
-> vẫn STALE (`v5_hist64_ep2`). Sau khi phân tích bảng dưới → chốt config + train full + `export.py`
-> (loop `docs/RANKER.md §9`) ở phiên sau.
+> ✅ **CHỐT 2026-06-18**: sau coarse sweep (§3) + relabel ablation (§4), chốt **`lrank_t20_gainLin`**,
+> train full 100k + `export.py` (§5–6). `artifacts/ranker.txt` = `lrank_t20_gainLin` (pool `final`).
+> Bảng coarse §3 giữ nguyên làm bằng chứng xếp hạng; §5 là số full đã confirm.
 
 ## 0. Bối cảnh & câu hỏi
 
@@ -130,8 +130,11 @@ venv/bin/python ranker/export.py && venv/bin/python -m pytest ranker/tests -q   
 
 - **Winner production = `lrank_t20_gainLin`** (lambdarank, t20, label_gain=[0,1,2,3,4], α=1.0, K=200). TEST:
   ndcg@10 .5323→**.7231**, liked_ndcg@10 .3903→**.5615**, r@100 .5387→**.6048**, liked_r@100 .6445→**.7182**.
-- **Vượt MF ALS đã tune trên mọi metric head+mid**: ndcg@10 .7231 > MF ndcg-opt .7027 (+.020, thoải mái hơn winner v5 +.0047),
-  r@100 .6048 > .5954 (v5 còn thua chỗ này), liked_ndcg@10 .5615 ≫ .5052 (+.056). Chỉ nhường deep-recall tail (r@200 trần pool .6758).
+- **So MF ALS đã tune** (cùng thang đo K≤200 — baseline cosine trùng ~1e-15 giữa full-catalog và pool,
+  `docs/TWO_TOWER_MODEL.md §10.1`): two-stage vượt MF **ndcg-opt** mọi head+mid — ndcg@10 .7231 vs .7027,
+  r@100 .6048 vs .5954, liked_ndcg@10 .5615 ≫ .5052. Tail nhường MF (r@200 trần pool .6758 < .7136/.7511 —
+  candidate-generation của retriever, không phải lệch harness). Bổ sung: cũng vượt cosine baseline cùng
+  pool (§6 đầu); lợi thế vững = head/liked + cold-start.
 - **Đánh đổi đã chấp nhận**: gainLin max ndcg@10 nhưng liked nhỉnh hơn xendcg một chút khi lên full (.5641 vs coarse cho thấy
   căng thẳng thu hẹp ở full data) — chọn gainLin vì headline đồ án ưu tiên ndcg@10, và liked vẫn ≫ MF.
 - **Relabel liked-aware / steep: bác** (không giúp liked, hại ndcg@10) → giữ grading mặc định.

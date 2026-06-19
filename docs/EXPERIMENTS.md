@@ -10,9 +10,8 @@
 > ⚠️ **Config final = `final`** (2026-06-17): `history_source=embed`, `train_hist_len=128`, 10 epoch, d128,
 > τ.07, logQ α=1, **synopsis OFF**. Synopsis (`final_syn`) đã test on/off và **bị bác** — cải thiện warm
 > nhưng regress cold, mà retriever ưu tiên cold (`docs/SYNOPSIS_EMB.md`). ✅ **Re-export DONE (2026-06-17)**:
-> `best.pt`/`artifacts/` giờ là `final` (`CONTRACT.md` step 31500), serve-path official trong `docs/RESULTS.md §3b`.
-> Còn lại: retrain ranker trên pool `final` (`docs/RANKER.md §9`); số two-stage `v5_hist64_ep2` trong
-> `RESULTS.md`/`PROGRESS.md` vẫn STALE cho tới khi retrain.
+> `best.pt`/`artifacts/` giờ là `final` (`CONTRACT.md` step 31500), serve-path official trong `docs/RESULTS.md §3b`;
+> ranker đã retrain trên pool `final` (2026-06-18, `lrank_t20_gainLin` — `docs/RANKER.md`) → pipeline đồng bộ.
 
 ## 0. Bối cảnh
 
@@ -193,4 +192,4 @@ subset 15%) → xem `runs.csv` (lọc `train_user_frac=0.15`) chọn top-K → *
 - **Đường cong**: `runs/v5/<run>/history.json` (loss + val metric theo step) → notebook cell 7-8.
 - **Cold (anime mới)**: notebook cell 10 (`split='val'` khi tune; `test_cold` = final exam, 1 lần).
 - **Provenance đầy đủ 1 run**: `runs/v5/<run>/config.json`. Bar baselines: `RESULTS.md` / `BASELINES.md`
-  (⏳ baselines đang re-run — itemknn K, content IDF, MF, +liked-metric — số PENDING).
+  (baselines đã chốt 2026-06-17 — itemknn K=50, content IDF, MF per-axis f128, +liked-metric).
