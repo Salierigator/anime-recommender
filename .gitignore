@@ -31,6 +31,9 @@ retriever/checkpoints/
 ranker/models/
 runs/
 
+# Map viz outputs (coords/reducer/html — sinh lại từ artifacts)
+map/outputs/
+
 # Secrets / API keys
 .env
 
