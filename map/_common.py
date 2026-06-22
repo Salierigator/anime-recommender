@@ -91,7 +91,12 @@ def save_reducer(method: str, reducer) -> Path:
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     p = reducer_path(method)
     p.mkdir(parents=True, exist_ok=True)           # umap save() KHÔNG tự tạo dir -> phải tạo trước
-    reducer.save(str(p))                           # ParametricUMAP.save -> ghi encoder.keras + model.pkl
+    # Keras-3 không serialize được parametric_model (UMAPModel thiếu get_config) -> save() crash.
+    # Ta chỉ cần encoder cho .transform (transform = encoder.predict; load cũng không đọc 2 cái này)
+    # nên null chúng để save() bỏ qua, chỉ ghi encoder.keras + model.pkl.
+    reducer.parametric_model = None
+    reducer.decoder = None
+    reducer.save(str(p))
     return p
 
 
