@@ -90,7 +90,8 @@ def reducer_path(method: str) -> Path:
 def save_reducer(method: str, reducer) -> Path:
     OUTPUTS.mkdir(parents=True, exist_ok=True)
     p = reducer_path(method)
-    reducer.save(str(p))                           # ParametricUMAP.save -> thư mục (keras + pickle)
+    p.mkdir(parents=True, exist_ok=True)           # umap save() KHÔNG tự tạo dir -> phải tạo trước
+    reducer.save(str(p))                           # ParametricUMAP.save -> ghi encoder.keras + model.pkl
     return p
 
 

@@ -2,7 +2,7 @@
 
 Doc tổng hợp cho `retriever/data_prep/` — **build cái gì, set up thế nào, vì sao**. Biến `cleaned-data/` → artifacts sẵn-sàng-train ở `retriever/train-data/`. Split + định nghĩa support/query: `docs/DATA_SPLIT.md`.
 
-> ⚠️ Số liệu = snapshot run prep **2026-06-10**. Pipeline tất định (seed 42) — số chỉ đổi nếu sửa labels/constants trong `prep_config.py` và re-run; khi đó cập nhật lại bảng ở đây + `PROGRESS.md`.
+> ⚠️ Số liệu = snapshot run prep **2026-06-10**. Pipeline tất định (seed 42) — số chỉ đổi nếu sửa labels/constants trong `prep_config.py` và re-run; khi đó cập nhật lại bảng ở đây (+ `docs/DATA_SPLIT.md` nếu split đổi).
 
 ---
 

@@ -5,7 +5,7 @@ Doc kiến trúc sống: **cây thư mục + luồng hoạt động end-to-end**
 > Trạng thái **2026-06-18**: pipeline **đồng bộ hoàn toàn** trên config/pool `final`. Retriever
 > chốt `final` (no synopsis, 2026-06-17, serve-path official [RESULTS.md §3b](RESULTS.md)); ranker
 > chốt `lrank_t20_gainLin` trên pool `final` (2026-06-18, [RESULTS.md §6](RESULTS.md)). Số liệu
-> tổng hợp + trạng thái mới nhất: root `PROGRESS.md`. Kiến trúc/protocol mô tả trong file ổn định.
+> tổng hợp + nguồn từng số + trạng thái: [RESULTS.md](RESULTS.md). Kiến trúc/protocol mô tả trong file ổn định.
 
 ---
 
@@ -28,7 +28,6 @@ Anime recommender **2-stage**, build thành 3 mảng độc lập:
 ```
 anime-recommender/
 ├── CLAUDE.md                 # guideline + context tổng (retriever/ranker/service có CLAUDE.md riêng)
-├── PROGRESS.md               # ★ trạng thái + số liệu mới nhất — đọc đầu tiên
 ├── AGENT.md                  # guideline cho agent build frontend (mảng service)
 ├── requirements.txt          # deps chung (torch + lightgbm + implicit + pytest…)
 ├── venv/                     # 1 venv chung — không đọc
@@ -111,7 +110,7 @@ Schema chi tiết + version: **`artifacts/CONTRACT.md`** (tự sinh bởi export
 
 ## 5. Trạng thái & việc còn mở
 
-> Trạng thái chi tiết + số liệu + việc tiếp theo: **root `PROGRESS.md`** (luôn mới hơn file này).
+> Trạng thái chi tiết + số liệu: **[RESULTS.md](RESULTS.md)**.
 
 - **Retriever** *(✅ pipeline hoàn thành)*: data + protocol + model + baselines + export đều chạy và verify. **Chốt config `final` (no synopsis, 2026-06-17)** — synopsis test on/off bị bác vì regress cold (`docs/SYNOPSIS_EMB.md`). ✅ **re-export xong** (`best.pt`/`artifacts/` = `final`, serve-path official `docs/RESULTS.md §3b`); ranker đã retrain trên pool `final` → pipeline đồng bộ.
 - **Ranker** *(✅ RE-CHỐT 2026-06-18 pool `final`)*: `artifacts/ranker.txt` = production (`lrank_t20_gainLin` lambdarank t20, α=1, test ndcg@10 **.7231** / liked_ndcg@10 .5615, vượt MF ndcg-opt mọi head+mid — `docs/RESULTS.md §6`); cold tách kênh serve. ✅ test_cold final exam đã chấm 1 lần (2026-06-18, cosine cold ndcg@10 .1397 — `docs/RESULTS.md §7`). Còn mở (không chặn): ablation K=500.

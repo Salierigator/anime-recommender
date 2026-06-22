@@ -20,7 +20,7 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 | Cần số gì | File nguồn (máy sinh) | Ghi chú |
 |---|---|---|
 | **Retriever full-catalog, serve-path** (warm val/test + cold val) — số CHÍNH thức để báo cáo | `artifacts/eval_reference.json` | do `retriever/test_export.py` đo QUA artifacts (row H→OOV) |
-| Retriever theo checkpoint — so run-vs-run khi tune | bảng v5 trong `PROGRESS.md` + leaderboard `runs.csv`/`cold_runs.csv` (Drive; bản local: `retriever/runs/`) + `artifacts/CONTRACT.md` (val của best.pt) | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
+| Retriever theo checkpoint — so run-vs-run khi tune | leaderboard `runs.csv`/`cold_runs.csv` (Drive; bản local: `retriever/runs/`) + `artifacts/CONTRACT.md` (val của best.pt) + bảng §3 dưới | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
 | **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
 | Baselines retriever (TEST warm + cold) | `retriever/baselines/*.txt` | phương pháp: `docs/BASELINES.md` |
 | Ranker per-model: **sweep α** + val + cold diagnostic | `ranker/models/<run>/results.txt` (+ `row.json`: hyperparam, train_sec) | CHỈ VAL — kỷ luật giữ test sạch |
@@ -37,7 +37,7 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 
 | Biến thể | Cache item encode thế nào | Dùng khi nào | Nguồn |
 |---|---|---|---|
-| **Checkpoint-path** | mọi item id thật (row H = id thật chưa train, vector noise) | so run-vs-run lúc tune (Colab) | `PROGRESS.md` bảng v5, `runs.csv`, CONTRACT.md |
+| **Checkpoint-path** | mọi item id thật (row H = id thật chưa train, vector noise) | so run-vs-run lúc tune (Colab) | `runs.csv` (bản local `retriever/runs/`), `CONTRACT.md`, §3 dưới |
 | **Serve-path** | row H encode **id→OOV** (content thật — đúng serving) | số chính thức / mọi số ranker + service | `eval_reference.json`, mọi số trong `ranker_meta.json` |
 
 Serve-path warm thấp hơn checkpoint-path ~0.5–1 điểm (vd test r@200 .6608 → .6524) vì 1.142 row H từ noise-vector trở thành content-vector "hợp lý" → distractor mạnh hơn. Đây là chủ đích: số phải khớp cái user thật nhìn thấy.
@@ -48,7 +48,7 @@ Ngoài ra khi đọc recall@K nhỏ: có **trần lý thuyết** do R > K (warm 
 
 ## 3. Retriever — two-tower `v5_hist64_ep2` (serve-path, full catalog) 🔴 STALE (config cũ; final = §3b)
 
-Config thắng (nguồn: PROGRESS + CONTRACT): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, logq_alpha=1, history_source=cache, history_pool=mean, **train_hist_len=64**, id_dropout=.1, bs=8192, 2 epoch (Colab A100). Checkpoint: epoch=1, step=16000.
+Config thắng (nguồn: `retriever/runs/runs.csv` — bản v5 lịch sử): d=128, MLP [256], use_item_id (id_dim 128), τ=.07, logq_alpha=1, history_source=cache, history_pool=mean, **train_hist_len=64**, id_dropout=.1, bs=8192, 2 epoch (Colab A100). Checkpoint: epoch=1, step=16000.
 
 | Slice | r@10 | r@50 | r@100 | r@200 | r@500 | ndcg@10 | ndcg@100 | n_users |
 |---|---|---|---|---|---|---|---|---|

@@ -7,7 +7,7 @@ Doc tổng hợp cho `retriever/baselines/` — **mỗi baseline hoạt động 
 > (2) **HP-tune trên VAL** cho 3 baseline personalized (MF / itemknn / content) — chọn config theo val
 > rồi report test (§3). Baselines không personalized (random/popular/meta_popular) tất định theo data,
 > số binary **không đổi** so với 2026-06-11 (đã dùng làm sanity gate cho liked plumbing). File kết quả
-> gốc: `retriever/baselines/*.txt`. Bảng so sánh mới nhất: `PROGRESS.md` + `docs/RESULTS.md`.
+> gốc: `retriever/baselines/*.txt`. Bảng so sánh mới nhất: `docs/RESULTS.md`.
 
 ---
 
@@ -112,7 +112,7 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 **Cold** (test_cold, full-catalog): content r@100 .1320 / r@200 .2177 / hit@500 .3784 (liked: lr@200 .2103 / lndcg@10 .0219) · meta_popular r@200 .0999 / hit@500 .1559 (lr@200 .1466) · random r@200 .0086 · popular/itemknn/mf = N/A.
 
-Đọc số (so với two-stage hiện tại — chi tiết `PROGRESS.md` / `docs/RESULTS.md §5–6`):
+Đọc số (so với two-stage hiện tại — chi tiết `docs/RESULTS.md §5–6`):
 
 > ℹ️ **Cùng thang đo ở K≤200 (đọc trước khi so).** Baselines (gồm MF) đo bằng harness **full-catalog**
 > (`_eval.py` ≡ `retriever/src/metrics.py`, rank toàn 22.8k); two-stage đo bằng harness **pool**

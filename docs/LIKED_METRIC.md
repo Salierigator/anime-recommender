@@ -7,12 +7,12 @@
 > `retriever/src/metrics.py`, `ranker/src/metrics.py`, `ranker/eval.py`, `retriever/train.ipynb`.
 >
 > Trạng thái (2026-06-16): **ĐÃ TRIỂN KHAI + verify local** (tests + sanity gate pass). Là tinh
-> chỉnh *đo lường* — KHÔNG đổi label/objective/selection (xem §5). Tài liệu này thay cho `REFINE.md`
-> (phân tích gốc) — REFINE đã gập vào đây.
+> chỉnh *đo lường* — KHÔNG đổi label/objective/selection (xem §5). Tài liệu này thay cho `REFINE.md` cũ
+> (phân tích gốc đã gập hết vào đây — file REFINE không còn).
 
 ## 0. Bối cảnh — vì sao cần
 
-Phát hiện gốc (chuỗi phân tích trong REFINE §3–§4): ranker **train graded** theo điểm
+Phát hiện gốc (chuỗi phân tích, gập từ REFINE cũ): ranker **train graded** theo điểm
 ([`ranker/src/config.py::grade`](../ranker/src/config.py) `10→4,9→3,7-8→2,0/5/6→1`) nhưng **đo +
 chọn model hoàn toàn binary** (`eval_pool` labels 0/1 = candidate ∈ query). Hệ quả: con số headline
 (test ndcg@10 binary, hiện .7231) chỉ trả lời *"có đẩy một item-đã-tương-tác lên đầu không"*, **chưa bao giờ** đo
@@ -142,15 +142,15 @@ ranker .5615.)
 
 ## 5. Decisions & những gì BÁC (recorded)
 
-- **Label/objective/selection KHÔNG đổi**: retriever vẫn binary recall stage (REFINE §2 recorded);
-  ranker selection vẫn Pareto trên `SEL_METRICS` binary (REFINE §3 kỷ luật). Liked = **report-only**.
+- **Label/objective/selection KHÔNG đổi**: retriever vẫn binary recall stage;
+  ranker selection vẫn Pareto trên `SEL_METRICS` binary. Liked = **report-only**.
 - **BÁC graded-ndcg**: cân nhắc nhưng bỏ — liked-ndcg/recall gọn hơn (không grade per-candidate /
   ideal-gains), trả lời cùng câu hỏi.
 - **BÁC global threshold (score≥8/≥9)**: chọn per-user above-own-mean (đúng "thích" theo thang riêng).
 - **BÁC z≥τ với τ>0**: chọn τ=0 (above mean) → không cần u_std/σ_floor/shrinkage, robust hơn.
 - Cột bảng leaderboard: cắt **core-k** (thủ phạm phình là metric-k); GIỮ cột config (provenance rẻ,
   vary trong sweep) — gọn bằng display `_show`.
-- Favorites-as-hard-positive (REFINE §6, serve-only) **CHƯA làm** — ngoài phạm vi liked-metric.
+- Favorites-as-hard-positive (serve-only) **CHƯA làm** — ngoài phạm vi liked-metric.
 
 ## 6. Trạng thái backport sang các doc khác (cập nhật 2026-06-19)
 

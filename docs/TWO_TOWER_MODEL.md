@@ -4,8 +4,7 @@ Doc tổng hợp cho `retriever/src/` — kiến trúc + training + **protocol e
 
 > Config đã **chốt `final` (no synopsis, 2026-06-17)** và **re-export xong** — `best.pt`/`artifacts/` =
 > `final` (serve-path official [RESULTS.md §3b](RESULTS.md)); ranker cũng đã retrain trên pool `final`
-> (2026-06-18) → pipeline đồng bộ. Giá trị config chốt: §6 (khối "Config `final`"). Số mới nhất + trạng
-> thái: root `PROGRESS.md`; tổng hợp + nguồn từng số: [RESULTS.md](RESULTS.md). Kiến trúc/protocol ổn định.
+> (2026-06-18) → pipeline đồng bộ. Giá trị config chốt: §6 (khối "Config `final`"). Số mới nhất + tổng hợp + nguồn từng số: [RESULTS.md](RESULTS.md). Kiến trúc/protocol ổn định.
 
 ---
 

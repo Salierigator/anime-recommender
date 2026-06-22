@@ -1,6 +1,6 @@
 # DATA_SPLIT.md — Split & định nghĩa support/query
 
-> Mô tả cách chia data + protocol eval của retriever. Pipeline build chi tiết: `docs/TRAIN_DATA.md`. Model + metrics: `docs/TWO_TOWER_MODEL.md`. Số liệu thực tế: root `PROGRESS.md`.
+> Mô tả cách chia data + protocol eval của retriever. Pipeline build chi tiết: `docs/TRAIN_DATA.md`. Model + metrics: `docs/TWO_TOWER_MODEL.md`. Số liệu thực tế: `docs/TRAIN_DATA.md §1` (snapshot prep) + `docs/RESULTS.md` (tổng hợp).
 
 > ⚠️ Các con số (counts/trần recall) = snapshot prep **2026-06-10** — tất định theo seed 42, chỉ đổi nếu sửa `prep_config.py` và re-run prep. Protocol thì cố định.
 
