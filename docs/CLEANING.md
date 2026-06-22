@@ -264,7 +264,6 @@ mean ratings/anime             4,246.47         5,259.76      +23.86%
 
 Anime mất chủ yếu **niche** (members < 100, ratings < 20). Sau khi loại bot, niche anime mất 1–3 ratings → tụt dưới `ANIME_MIN=20` → drop.
 
-**Defensible**: anime <20 ratings không học được embedding tin cậy. Cold-start nên handle ở serving qua content embedding (synopsis + genres + studios) + ANN search content-only.
 
 ### So với industry
 
@@ -369,12 +368,3 @@ Schema cuối `(username, anime_id, status, score)` — không có `rated_at`. H
 
 Anime mất chủ yếu niche. Với <20 interactions, two-tower không học được embedding tin cậy. Acceptable cho training; cold-start nên giải quyết ở serving:
 - Index content embedding (synopsis + genres + studios) cho cold anime
-- Fallback ANN search trên content-only embedding khi không có collaborative signal
-
-### `score=0`
-
-**52.15M rows (43.45%)** có `score=0` (đo trên cleaned ratings — [DATA_DISTRIBUTIONS.md §4.2](DATA_DISTRIBUTIONS.md)). **Semantics: "chưa rate"**, không phải "rate 0 điểm". Tập trung ở `plan_to_watch` (99.4% chưa chấm) và một phần `watching/on_hold`; `completed` chỉ 16.2% score=0. Đừng nhầm khi compute mean/median — luôn filter `score > 0` cho aggregate score.
-
-### Không có content-quality validation
-
-Pipeline chỉ kiểm graph structure + bot. Không kiểm chất lượng nội dung (synopsis empty, title placeholder...). Nếu thấy anime lạ trong cleaned-data → có thể là MAL entry kém chất lượng nhưng đủ ratings → cleaning không loại.

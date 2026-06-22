@@ -4,9 +4,9 @@ Stack ARTIFACTS (firewall-clean): tái dùng encoder của ranker (load_user_enc
 — KHÔNG load best.pt. User-tower không có user-id nên username lạ vẫn encode được, miễn có history.
 
   # user trong dataset (history từ artifacts/users_history.parquet qua username):
-  venv/bin/python map/encode_user.py <username> --method umap2d
+  python map/encode_user.py <username>
   # user tổng hợp từ list mal_id (mỗi dòng 1 id):
-  venv/bin/python map/encode_user.py --mal-ids ids.txt --name me --method umap_sphere
+  python map/encode_user.py --mal-ids ids.txt --name me
 
 Ghi outputs/overlay_user_<name>.parquet (kind∈{user,neighbor}) -> viz.py --overlay.
 
@@ -60,7 +60,7 @@ def main() -> None:
     ap.add_argument("username", nargs="?", help="username trong dataset")
     ap.add_argument("--mal-ids", type=Path, help="file list mal_id (user lạ)")
     ap.add_argument("--name", help="tên file overlay (mặc định = username / 'malids')")
-    ap.add_argument("--method", required=True)
+    ap.add_argument("--method", default="pumap2d")
     ap.add_argument("--top-k", type=int, default=15, help="số anime gợi ý gần U nhất để highlight")
     args = ap.parse_args()
 
@@ -89,11 +89,9 @@ def main() -> None:
     reducer = C.load_reducer(args.method)
     user_xy = C.transform_to_coords(args.method, reducer, Un)[0]
     coords = C.load_coords(args.method).set_index("anime_idx")
-    has_z = "z" in coords.columns
 
     rows = [{"kind": "user", "label": name, "anime_idx": -1,
-             "x": float(user_xy[0]), "y": float(user_xy[1]),
-             **({"z": float(user_xy[2])} if has_z else {})}]
+             "x": float(user_xy[0]), "y": float(user_xy[1])}]
     base = pd.read_parquet(C.OUTPUTS / "base.parquet").set_index("anime_idx")
     for a in nbr:
         if a not in coords.index:
@@ -101,8 +99,7 @@ def main() -> None:
         c = coords.loc[a]
         title = base.loc[a, "title"] if a in base.index else str(a)
         rows.append({"kind": "neighbor", "label": str(title), "anime_idx": int(a),
-                     "x": float(c["x"]), "y": float(c["y"]),
-                     **({"z": float(c["z"])} if has_z else {})})
+                     "x": float(c["x"]), "y": float(c["y"])})
 
     out = C.OUTPUTS / f"overlay_user_{name}.parquet"
     pd.DataFrame(rows).to_parquet(out)
