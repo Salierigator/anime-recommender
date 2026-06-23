@@ -15,9 +15,11 @@ import pandas as pd
 import _common as C
 
 
-def load_plot_df(method: str, color: str, cluster_algo: str) -> pd.DataFrame:
+def load_plot_df(method: str, color: str, cluster_algo: str,
+                 coords: pd.DataFrame | None = None) -> pd.DataFrame:
     base = pd.read_parquet(C.OUTPUTS / "base.parquet")
-    coords = C.load_coords(method)
+    if coords is None:                                       # sweep truyền coords RAM -> khỏi ghi file
+        coords = C.load_coords(method)
     df = coords.merge(base, on="anime_idx", how="left")
 
     if color == "cluster":
@@ -65,9 +67,23 @@ def add_overlays(fig, names: list[str]):
                 marker=dict(size=size, symbol=sym, color=col, line=dict(width=1, color="white"))))
 
 
-def main() -> None:
+def build_fig(df: pd.DataFrame, color: str, title: str):
+    """Scatter 2D + nhãn cụm + layout (KHÔNG overlay). Dùng chung CLI + sweep notebook."""
     import plotly.express as px
 
+    hover = {"primary_genre": True, "x": False, "y": False}
+    kw = dict(color=color, hover_name="title", hover_data=hover, opacity=0.55, title=title)
+    if color == "cluster":
+        kw["color_discrete_sequence"] = px.colors.qualitative.Dark24
+    fig = px.scatter(df, x="x", y="y", render_mode="webgl", **kw)
+    fig.update_traces(marker=dict(size=2.5))                 # trước khi add text/overlay
+    if color == "cluster":
+        add_cluster_labels(fig, df)
+    fig.update_layout(legend=dict(itemsizing="constant"))
+    return fig
+
+
+def main() -> None:
     ap = argparse.ArgumentParser(description="Render map 2D -> HTML")
     ap.add_argument("--method", default="pumap2d")
     ap.add_argument("--color", choices=["primary_genre", "cluster", "popularity"],
@@ -78,19 +94,8 @@ def main() -> None:
     args = ap.parse_args()
 
     df = load_plot_df(args.method, args.color, args.cluster)
-    hover = {"primary_genre": True, "x": False, "y": False}
-
-    kw = dict(color=args.color, hover_name="title", hover_data=hover, opacity=0.55,
-              title=f"{args.method} · color={args.color} · {len(df):,} anime")
-    if args.color == "cluster":
-        kw["color_discrete_sequence"] = px.colors.qualitative.Dark24
-    fig = px.scatter(df, x="x", y="y", render_mode="webgl", **kw)
-    fig.update_traces(marker=dict(size=2.5))                 # trước khi add text/overlay
-
-    if args.color == "cluster":
-        add_cluster_labels(fig, df)
+    fig = build_fig(df, args.color, f"{args.method} · color={args.color} · {len(df):,} anime")
     add_overlays(fig, args.overlay)
-    fig.update_layout(legend=dict(itemsizing="constant"))
 
     out = C.OUTPUTS / f"{args.method}{('_' + args.suffix) if args.suffix else ''}.html"
     fig.write_html(out, include_plotlyjs=True, full_html=True)
