@@ -36,7 +36,7 @@ anime-recommender/
 ├── cleaned-data/             # output cleaning (details/profiles/ratings.csv) — BLOCKED, input read-only
 ├── data-sample/              # 5 dòng đầu mỗi file — nguồn DUY NHẤT xem schema
 ├── data_audit/               # audit tầng data chung (script + output per-column)
-├── docs/                     # CLEANING · DATA_DISTRIBUTIONS · DATA_SPLIT · TRAIN_DATA · TWO_TOWER_MODEL · SYNOPSIS_EMB · EXPERIMENTS · LIKED_METRIC · BASELINES · RANKER · RANKER_EXPERIMENTS · RESULTS · file này
+├── docs/                     # CLEANING · DATA_DISTRIBUTIONS · DATA_SPLIT · TRAIN_DATA · TWO_TOWER_MODEL · SYNOPSIS_EMB · EXPERIMENTS · METRIC · BASELINES · RANKER · RANKER_EXPERIMENTS · RESULTS · file này
 ├── legacy/                   # docs + kết quả cũ (gitignored, chỉ tham khảo)
 │
 ├── artifacts/                # ★ FIREWALL giữa 3 mảng (xem §4 + artifacts/CONTRACT.md tự sinh)

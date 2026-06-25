@@ -2,7 +2,7 @@
 
 > Nguồn viết đồ án cho phần **thử nghiệm chọn LightGBM ranker cuối** trên pool retriever `final`
 > (no synopsis, re-export 2026-06-17). Bổ sung cho `docs/RANKER.md` (kiến trúc + data flow + protocol)
-> và `docs/LIKED_METRIC.md` (định nghĩa liked). Mirror vai trò `docs/EXPERIMENTS.md` của retriever.
+> và `docs/METRIC.md` (định nghĩa liked). Mirror vai trò `docs/EXPERIMENTS.md` của retriever.
 >
 > ✅ **CHỐT 2026-06-18**: sau coarse sweep (§3) + relabel ablation (§4), chốt **`lrank_t20_gainLin`**,
 > train full 100k + `export.py` (§5–6). `artifacts/ranker.txt` = `lrank_t20_gainLin` (pool `final`).
@@ -13,7 +13,7 @@
 Retriever chốt `final` → pool two-stage đổi (warm val pool ceiling r@200 **.6758**, cosine ndcg@10 **.5343**;
 `docs/RESULTS.md §3b`). Ranker cũ train trên pool `v5_hist64_ep2` → phải **train lại + dò config**. Mục tiêu
 phiên này: **ưu tiên ndcg@10 (head precision) + liked metric** (item user *thật sự thích*, score > u_mean —
-`docs/LIKED_METRIC.md`), tìm xem có config nào vượt winner cũ (`xendcg`, α=1) không.
+`docs/METRIC.md`), tìm xem có config nào vượt winner cũ (`xendcg`, α=1) không.
 
 Khoảng trống nhận ra từ code (động cơ thử nghiệm):
 1. **Train graded (10→4…) nhưng selection BINARY ndcg@10**; liked metric chỉ **report-only**, chưa từng

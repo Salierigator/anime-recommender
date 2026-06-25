@@ -3,7 +3,7 @@
 Doc tổng hợp cho `retriever/baselines/` — **mỗi baseline hoạt động thế nào, vì sao chọn, đọc số ra sao**. Baselines phía ranker (linear logistic, NN DIN) nằm ở `docs/RANKER.md §7` — không lặp ở đây.
 
 > ⚠️ Số liệu = snapshot **2026-06-17** (đo trên TEST, protocol v2). Cập nhật 2026-06-17: (1) thêm
-> **liked-metric** (liked-recall/liked-ndcg, report-only — `docs/LIKED_METRIC.md`) cho mọi baseline;
+> **liked-metric** (liked-recall/liked-ndcg, report-only — `docs/METRIC.md`) cho mọi baseline;
 > (2) **HP-tune trên VAL** cho 3 baseline personalized (MF / itemknn / content) — chọn config theo val
 > rồi report test (§3). Baselines không personalized (random/popular/meta_popular) tất định theo data,
 > số binary **không đổi** so với 2026-06-11 (đã dùng làm sanity gate cho liked plumbing). File kết quả
@@ -36,11 +36,11 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 ### 3.1 `rand.py` — Random (sàn, warm + cold)
 
-Điểm uniform ngẫu nhiên (seed cố định) cho mọi candidate. Có công thức giải tích `recall@K ≈ K/N_cand` in kèm trong output — sai lệch giữa số đo và giải tích là sanity check cho harness.
+Điểm uniform ngẫu nhiên (seed cố định) cho mọi candidate. Có công thức giải thích `recall@K ≈ K/N_cand` in kèm trong output — sai lệch giữa số đo và giải tích là sanity check cho harness.
 
 ### 3.2 `popular.py` — MostPopular (warm only)
 
-`score(i) = count(i trong TRAIN examples)` — giống nhau cho mọi user. Đếm trên train (không leak test). Là bar "không cá nhân hoá": recall của nó cao bất ngờ (r@200 .4516) vì phân phối xem anime rất đầu nặng — model nào thua nó là chưa học được gì ngoài popularity.
+`score(i) = count(i trong TRAIN examples)` — giống nhau cho mọi user. Đếm trên train (không leak test). Là bar "không cá nhân hoá": recall của nó cao bất ngờ (r@200 .4516) vì phân phối xem anime đầu rất nặng — model nào thua nó là chưa học được gì ngoài popularity.
 
 ### 3.3 `meta_popular.py` — Meta-Popular (warm + cold)
 
@@ -73,9 +73,9 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
   | α (f128, val) | r@10 | r@100 | r@200 | ndcg@10 |
   |---|---|---|---|---|
-  | **1** | **.2115** | .6103 | .7109 | **.7093** |
-  | 2 | .2079 | .5938 | .7284 | .7052 |
-  | 3 | .2111 | .6155 | .7354 | .7031 |
+  | **1** | **.2115** | .5938 | .7109 | **.7093** |
+  | 2 | .2111 | .6103 | .7284 | .7052 |
+  | 3 | .2079 | .6155 | .7354 | .7031 |
   | 5 | .2075 | **.6179** | .7405 | .6846 |
   | 7 | .2029 | .6165 | .7412 | .6633 |
   | 10 | .1964 | .6124 | **.7418** | .6339 |
