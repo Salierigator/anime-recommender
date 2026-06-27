@@ -40,7 +40,7 @@ class RealService(RecommenderService):
 
         try:
             out = self.rec.recommend(user, top_k=req.top_k, cold_k=req.cold_k,
-                                     anchor_mal_id=req.anchor_mal_id)
+                                     anchor_mal_id=req.anchor_mal_id, sfw=req.sfw)
         except KeyError:
             raise HTTPException(
                 status_code=422,

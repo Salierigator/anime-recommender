@@ -62,6 +62,7 @@ def main() -> None:
     ap.add_argument("--top-k", type=int, default=20)
     ap.add_argument("--cold-k", type=int, default=10)
     ap.add_argument("--anchor", type=int, help="mal_id: tìm anime giống X (giữ cá nhân hoá user)")
+    ap.add_argument("--allow-nsfw", action="store_true", help="KHÔNG lọc hentai (mặc định lọc)")
     ap.add_argument("--live", action="store_true", help="ép fetch API dù username có trong dataset")
     ap.add_argument("--no-cache", action="store_true")
     ap.add_argument("--dump", action="store_true", help="dump JSON ra backend/cache/")
@@ -99,7 +100,7 @@ def main() -> None:
     t1 = time.time()
     try:
         out = rec.recommend(user, top_k=args.top_k, cold_k=args.cold_k,
-                            anchor_mal_id=args.anchor)
+                            anchor_mal_id=args.anchor, sfw=not args.allow_nsfw)
     except KeyError:
         ap.error(f"--anchor {args.anchor} không có trong corpus")
     print(f"[infer] {time.time() - t1:.2f}s  (α={rec.alpha}, K={rec.k_retrieve})"

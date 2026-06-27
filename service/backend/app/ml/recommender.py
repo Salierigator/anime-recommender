@@ -23,7 +23,7 @@ sys.path.insert(0, str(ROOT / "ranker" / "src"))
 import torch                                               # noqa: E402  (TRƯỚC lightgbm)
 # features/pool TRƯỚC user_encode: cache module `config` của ranker vào sys.modules
 # trước khi user_encode chèn retriever/src (cũng có config.py) vào sys.path[0]
-from features import REF_YEAR, FEATURE_NAMES, ItemFeatures, build_frame     # noqa: E402
+from features import REF_YEAR, FEATURE_NAMES, ItemFeatures, build_frame, _parse_list  # noqa: E402
 from pool import (cross_features, encode_users, topk_pool,                  # noqa: E402
                   user_stats_from_support)
 from user_encode import ARTIFACTS, encode_gender_joined, load_user_encoder  # noqa: E402
@@ -54,9 +54,16 @@ class Recommender:
         real = idx.filter(pl.col("anime_idx") >= 2)
         self.mal2idx = dict(zip(real["mal_id"].to_list(), real["anime_idx"].to_list()))
         det = pd.read_csv(CLEANED / "details.csv",
-                          usecols=["mal_id", "title", "type", "score", "start_date"])
+                          usecols=["mal_id", "title", "type", "score", "start_date",
+                                   "genres", "rating"])
         det["year"] = pd.to_datetime(det["start_date"], errors="coerce", utc=True).dt.year
         self.detail = det.set_index("mal_id")[["title", "type", "score", "year"]]
+        # SFW: anime_idx của item hentai (genre 'Hentai' HOẶC rating 'Rx - Hentai')
+        is_hentai = (det["rating"] == "Rx - Hentai") | \
+            det["genres"].map(lambda s: "Hentai" in _parse_list(s))
+        self.nsfw_idx = np.asarray(
+            [self.mal2idx[m] for m in det.loc[is_hentai, "mal_id"] if m in self.mal2idx],
+            dtype=np.int64)
 
     # ---- nguồn history ----
     def user_from_dataset(self, username: str) -> dict | None:
@@ -123,12 +130,14 @@ class Recommender:
 
     # ---- end-to-end ----
     def recommend(self, user: dict, top_k: int = 20, cold_k: int = 10,
-                  anchor_mal_id: int | None = None) -> dict:
+                  anchor_mal_id: int | None = None, sfw: bool = True) -> dict:
         U = encode_users(self.enc, [user["hist_idx"]], [user["hist_score"]],
                          np.asarray([user["gender_id"]]), np.asarray([user["joined_bucket"]]),
                          self.cap)
+        # SFW: union item hentai vào mask → rớt khỏi cả pool warm lẫn cold trước khi rank
+        block = np.union1d(user["seen"], self.nsfw_idx) if sfw else user["seen"]
         if anchor_mal_id is None:
-            mask = [user["seen"]]
+            mask = [block]
             cold_query = U
             # [Gợi ý] warm-only → rerank LightGBM (cold_serving: cold KHÔNG qua ranker)
             cand, cos = topk_pool(U, self.enc.item_cache, mask, self.k_retrieve,
@@ -139,7 +148,7 @@ class Recommender:
             if aidx is None:
                 raise KeyError(anchor_mal_id)
             cold_query = self.enc.item_cache[aidx:aidx + 1]    # [1, d] = vector của X
-            mask = [np.union1d(user["seen"], [aidx])]          # loại chính X
+            mask = [np.union1d(block, [aidx])]                 # loại chính X
             cand, _ = topk_pool(cold_query, self.enc.item_cache, mask, self.k_retrieve,
                                 cold_idx=self.cold_idx)
             cos = (U @ self.enc.item_cache[torch.from_numpy(cand[0])].t()).numpy()  # [1, k]
