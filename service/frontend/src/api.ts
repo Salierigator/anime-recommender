@@ -14,3 +14,15 @@ export const recommendAPI = async (data: RecommendRequest): Promise<RecommendRes
   const response = await api.post<RecommendResponse>('/api/recommend', data);
   return response.data;
 };
+
+export const fetchPostersAPI = async (ids: number[]): Promise<Record<number, string | null>> => {
+  const response = await api.post<{ posters: Record<string, string | null> }>('/api/posters', { ids });
+  
+  // Convert string keys to number keys
+  const numberKeyedPosters: Record<number, string | null> = {};
+  for (const [key, value] of Object.entries(response.data.posters)) {
+    numberKeyedPosters[Number(key)] = value;
+  }
+  
+  return numberKeyedPosters;
+};

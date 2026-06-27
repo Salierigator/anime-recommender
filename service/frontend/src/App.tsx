@@ -1,13 +1,17 @@
 import { useState } from 'react';
 import { SearchForm } from './components/SearchForm';
 import { AnimeCard } from './components/AnimeCard';
-import { recommendAPI } from './api';
+import { AnimeModal } from './components/AnimeModal';
+import { recommendAPI, fetchPostersAPI } from './api';
 import type { RecommendRequest, RecommendResponse } from './types';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<RecommendResponse | null>(null);
+  const [selectedMalId, setSelectedMalId] = useState<number | null>(null);
+  const [posters, setPosters] = useState<Record<number, string | null>>({});
+  const [isPostersLoading, setIsPostersLoading] = useState<boolean>(false);
 
   const handleSearch = async (data: RecommendRequest) => {
     setIsLoading(true);
@@ -17,6 +21,28 @@ function App() {
     try {
       const response = await recommendAPI(data);
       setResult(response);
+      
+      // Batch fetch posters
+      const allIds = [
+        ...response.main.map(a => a.mal_id),
+        ...response.cold.map(a => a.mal_id)
+      ];
+      
+      if (allIds.length > 0) {
+        setIsPostersLoading(true);
+        try {
+          const postersData = await fetchPostersAPI(allIds);
+          setPosters(postersData);
+        } catch (err) {
+          console.error("Failed to fetch batch posters", err);
+          setPosters({}); // fallback to empty so cards trigger Jikan individually
+        } finally {
+          setIsPostersLoading(false);
+        }
+      } else {
+        setPosters({});
+      }
+      
     } catch (err: any) {
       if (err.response?.data?.detail) {
         setError(typeof err.response.data.detail === 'string' 
@@ -79,7 +105,14 @@ function App() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {result.main.map((anime, idx) => (
-                    <AnimeCard key={anime.mal_id} anime={anime} rank={idx + 1} />
+                    <AnimeCard 
+                      key={anime.mal_id} 
+                      anime={anime} 
+                      rank={idx + 1} 
+                      onClick={() => setSelectedMalId(anime.mal_id)}
+                      posterUrl={posters[anime.mal_id]}
+                      isPostersLoading={isPostersLoading}
+                    />
                   ))}
                 </div>
               </section>
@@ -94,7 +127,13 @@ function App() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 opacity-90 hover:opacity-100 transition-opacity">
                   {result.cold.map((anime, idx) => (
-                    <AnimeCard key={anime.mal_id} anime={anime} />
+                    <AnimeCard 
+                      key={anime.mal_id} 
+                      anime={anime} 
+                      onClick={() => setSelectedMalId(anime.mal_id)}
+                      posterUrl={posters[anime.mal_id]}
+                      isPostersLoading={isPostersLoading}
+                    />
                   ))}
                 </div>
               </section>
@@ -107,6 +146,12 @@ function App() {
             )}
           </div>
         )}
+
+        <AnimeModal 
+          malId={selectedMalId} 
+          isOpen={!!selectedMalId} 
+          onClose={() => setSelectedMalId(null)} 
+        />
       </main>
     </div>
   );

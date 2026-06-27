@@ -1,9 +1,9 @@
-// Cache to store resolved image URLs
-const CACHE = new Map<number, string | null>();
+// Cache to store resolved full Jikan data objects
+const CACHE = new Map<number, any>();
 
 interface QueueItem {
   malId: number;
-  resolve: (url: string | null) => void;
+  resolve: (data: any | null) => void;
 }
 
 const queue: QueueItem[] = [];
@@ -12,7 +12,7 @@ let isProcessing = false;
 const JIKAN_BASE = 'https://api.jikan.moe/v4';
 
 /**
- * Processes the queue of image requests, ensuring we don't exceed 3 requests per second.
+ * Processes the queue of requests, ensuring we don't exceed 3 requests per second.
  * We add a 350ms delay between requests to be safe.
  */
 async function processQueue() {
@@ -25,7 +25,7 @@ async function processQueue() {
 
     // Check cache again in case a duplicate was queued before the first one resolved
     if (CACHE.has(item.malId)) {
-      item.resolve(CACHE.get(item.malId)!);
+      item.resolve(CACHE.get(item.malId));
       continue;
     }
 
@@ -42,36 +42,47 @@ async function processQueue() {
       }
       
       const data = await res.json();
-      const images = data?.data?.images?.jpg;
-      const imageUrl = images?.large_image_url || images?.image_url || null;
+      const animeData = data?.data || null;
       
-      CACHE.set(item.malId, imageUrl);
-      item.resolve(imageUrl);
+      CACHE.set(item.malId, animeData);
+      item.resolve(animeData);
     } catch (err) {
-      console.error(`Error fetching image for ${item.malId}:`, err);
+      console.error(`Error fetching detail for ${item.malId}:`, err);
       // Even on error, cache null so we don't retry repeatedly and get blocked
       CACHE.set(item.malId, null);
       item.resolve(null);
     }
 
-    // Delay ~350ms to respect 3 req/s rate limit
-    await new Promise(r => setTimeout(r, 350));
+    // Delay ~340ms to respect 3 req/s rate limit
+    await new Promise(r => setTimeout(r, 340));
   }
 
   isProcessing = false;
 }
 
 /**
- * Fetches the poster image URL for a given anime using Jikan API.
+ * Fetches the full detail object for a given anime using Jikan API.
  * Uses a global queue to avoid hitting rate limits.
  */
-export function fetchAnimePoster(malId: number): Promise<string | null> {
+export function fetchAnimeDetail(malId: number): Promise<any | null> {
   if (CACHE.has(malId)) {
-    return Promise.resolve(CACHE.get(malId)!);
+    return Promise.resolve(CACHE.get(malId));
   }
 
   return new Promise((resolve) => {
     queue.push({ malId, resolve });
     processQueue();
   });
+}
+
+/**
+ * Fetches the poster image URL for a given anime using Jikan API.
+ * Uses the full object cache so we only make one request per anime.
+ */
+export async function fetchAnimePoster(malId: number): Promise<string | null> {
+  const data = await fetchAnimeDetail(malId);
+  if (!data) return null;
+  
+  const images = data?.images?.jpg;
+  return images?.large_image_url || images?.image_url || null;
 }

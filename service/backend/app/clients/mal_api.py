@@ -80,6 +80,15 @@ def get_anime_metadata(anime_id, fields=ANIME_FIELDS):
     )
 
 
+def get_main_picture(anime_id):
+    """Poster URL (large, fallback medium) from MAL v2, or None on failure."""
+    data = get_anime_metadata(anime_id, fields="main_picture")
+    if not data:
+        return None
+    pic = data.get("main_picture") or {}
+    return pic.get("large") or pic.get("medium")
+
+
 # --- 2a. user scored history (MAL v2, paginated) ----------------------------
 def get_user_anime_list(username, fields=ANIMELIST_FIELDS, limit=1000):
     url = f"{MAL_BASE}/users/{username}/animelist"

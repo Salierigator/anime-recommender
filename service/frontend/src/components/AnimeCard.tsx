@@ -6,38 +6,67 @@ import { fetchAnimePoster } from '../utils/jikanQueue';
 interface Props {
   anime: AnimeItem;
   rank?: number;
+  onClick?: () => void;
+  posterUrl?: string | null;
+  isPostersLoading?: boolean;
 }
 
-export function AnimeCard({ anime, rank }: Props) {
+export function AnimeCard({ anime, rank, onClick, posterUrl, isPostersLoading = false }: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isUrlFetched, setIsUrlFetched] = useState<boolean>(false);
   const [isImageLoaded, setIsImageLoaded] = useState<boolean>(false);
 
   useEffect(() => {
+    if (isPostersLoading) {
+      return;
+    }
+
     let isMounted = true;
-    setIsUrlFetched(false);
-    setIsImageLoaded(false);
-    
-    fetchAnimePoster(anime.mal_id).then((url) => {
-      if (isMounted) {
-        setImageUrl(url);
-        setIsUrlFetched(true);
-        // If there's no URL, we don't wait for onLoad
-        if (!url) {
-          setIsImageLoaded(true);
+
+    if (posterUrl) {
+      // Backend provided a URL
+      setImageUrl(posterUrl);
+      setIsUrlFetched(true);
+      setIsImageLoaded(false);
+    } else {
+      // Backend returned null or undefined, fallback to Jikan
+      setIsUrlFetched(false);
+      fetchAnimePoster(anime.mal_id).then((url) => {
+        if (isMounted) {
+          setImageUrl(url);
+          setIsUrlFetched(true);
+          if (!url) {
+            setIsImageLoaded(true);
+          }
         }
-      }
-    });
+      });
+    }
 
     return () => {
       isMounted = false;
     };
-  }, [anime.mal_id]);
+  }, [anime.mal_id, posterUrl, isPostersLoading]);
+
+  const handleImageError = () => {
+    // If the image fails to load, fallback to Jikan
+    fetchAnimePoster(anime.mal_id).then((url) => {
+      if (url && url !== imageUrl) {
+        setImageUrl(url);
+        setIsImageLoaded(false);
+      } else {
+        setImageUrl(null);
+        setIsImageLoaded(true);
+      }
+    });
+  };
 
   const malUrl = `https://myanimelist.net/anime/${anime.mal_id}`;
 
   return (
-    <div className="flex flex-col border border-gray-200 bg-white hover:shadow-md transition-shadow">
+    <div 
+      className={`flex flex-col border border-gray-200 bg-white hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex h-36">
         {/* Poster Image or Placeholder */}
         <div className="w-24 h-36 bg-gray-100 flex items-center justify-center flex-shrink-0 border-r border-gray-200 overflow-hidden relative">
@@ -54,8 +83,8 @@ export function AnimeCard({ anime, rank }: Props) {
               src={imageUrl} 
               alt={anime.title} 
               onLoad={() => setIsImageLoaded(true)}
+              onError={handleImageError}
               className={`w-full h-full object-cover transition-opacity duration-500 ease-in-out ${isImageLoaded ? 'opacity-100' : 'opacity-0'}`}
-              loading="lazy"
             />
           )}
 
@@ -117,6 +146,7 @@ export function AnimeCard({ anime, rank }: Props) {
           href={malUrl} 
           target="_blank" 
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-600 hover:text-gray-900 transition-colors"
         >
           View on MAL
