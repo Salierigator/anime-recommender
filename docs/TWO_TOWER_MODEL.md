@@ -36,7 +36,7 @@ Convention: import flat, CWD = `retriever/src/`. Tests: `venv/bin/python -m pyte
 
 - **ItemTower**: 6 cat/bucket emb (28) ⊕ genres Linear(22→8) ⊕ themes Linear(53→8) ⊕ studios Emb(302,16) masked-mean (16) [⊕ anime-id Emb(N,id_dim) nếu `use_item_id`] → MLP → V[128]. **id-dropout**: train, prob `id_dropout`, real idx≥2 → OOV (dạy backoff cold + giữ content path sống).
 - **UserTower**: pooled-history (128) ⊕ gender Emb(4,4) ⊕ joined Emb(5,4) → MLP → U[128]. `h_empty` learned thay pooling khi history rỗng. Không user-id (cold-by-user).
-- **Pooling history** (`history_pool`): `mean` (± `score_pool` linear/learned) | `attn` (learned-query attention). Kết quả đo: score_pool trung tính, attn không cải thiện khi vec history bị detach (xem `history_source`).
+- **Pooling history** (`history_pool`): `mean` (± `score_pool` linear/learned) | `attn` (learned-query attention). Kết quả đo: score_pool trung tính, attn không cải thiện warm và **regress cold mạnh** (cold ndcg@10 ~.066 vs mean ~.12) khi vec history bị detach (xem `history_source`) — số đầy đủ warm+cold: `docs/EXPERIMENTS.md §5.1`.
 - **`history_source`**: `cache` = lookup `item_cache` **detach** (user side không có grad về biểu diễn history); `embed` = bảng `nn.Embedding(num_items, d, padding_idx=0)` **trainable** riêng cho phía history → gradient chảy qua đường history. Nếu chốt `embed`: export phải đóng gói thêm `hist_emb` + service đổi cách pool.
 - **Item-vec cache**: refresh đầu epoch + mỗi `cache_refresh_steps`; eval dùng cache. **`refresh_item_cache(cold_mask=...)`**: row thuộc H encode id→OOV (content thật) — bắt buộc cho cold eval.
 

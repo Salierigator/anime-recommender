@@ -22,6 +22,7 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 | **Retriever full-catalog, serve-path** (warm val/test + cold val) — số CHÍNH thức để báo cáo | `artifacts/eval_reference.json` | do `retriever/test_export.py` đo QUA artifacts (row H→OOV) |
 | Retriever theo checkpoint — so run-vs-run khi tune | leaderboard `runs.csv`/`cold_runs.csv` (Drive; bản local: `retriever/runs/`) + `artifacts/CONTRACT.md` (val của best.pt) + bảng §3 dưới | checkpoint-path, cao hơn serve-path ~0.5–1đ (xem §2) |
 | **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
+| **Ablation kiến trúc/regularization** (pooling/attn · score_pool · id_dropout · MLP width · d · optimizer/wd · epochs) — bảng warm+cold | `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) | bảng số + đọc: `docs/EXPERIMENTS.md §5` |
 | Baselines retriever (TEST warm + cold) | `retriever/baselines/*.txt` | phương pháp: `docs/BASELINES.md` |
 | Ranker per-model: **sweep α** + val + cold diagnostic | `ranker/models/<run>/results.txt` (+ `row.json`: hyperparam, train_sec) | CHỈ VAL — kỷ luật giữ test sạch |
 | Ranker leaderboard mọi run Colab | `ranker_runs.csv` (Drive) | ngoài repo |
@@ -57,6 +58,9 @@ Config thắng (nguồn: `retriever/runs/runs.csv` — bản v5 lịch sử): d=
 | **cold val** (val_cold) | .0767 | .2070 | .2925 | .3881 | .5471 | .1572 | .1926 | 8,388 |
 
 Cold thêm pooled hitrate (150.335 pairs): @10 .0720 · @100 .2964 · @200 .4074 · @500 .5881. (test_cold = final exam: chấm trên config `final`, không phải v5 này — xem §7.)
+
+> ℹ️ Ablation kiến trúc/regularization đầy đủ số (pooling/attn, score_pool, id_dropout, MLP width, `d`,
+> optimizer/weight_decay, epochs/history_source) — bảng warm+cold: `docs/EXPERIMENTS.md §5`.
 
 So run-vs-run v5 (checkpoint-path, WARM TEST, Colab — chỉ để thấy lever nào ăn):
 

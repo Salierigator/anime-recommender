@@ -170,7 +170,102 @@ negative áp đảo 5-20 hard-neg). Lặp ở batch nhỏ hơn (test r@200):
 + kiến trúc** (chỉ ghi nhận empirical, không đề xuất gỡ nhánh hard-neg); final dùng m_hardneg=5 / β=1 như
 xuyên suốt — vì trơ nên giá trị cụ thể không ảnh hưởng.
 
-## 5. Quy trình end-to-end
+## 5. Ablation kiến trúc & regularization (checkpoint-path test — coarse)
+
+Các knob kiến trúc/regularization còn lại (pooling, id_dropout, MLP width, `d`, optimizer, epochs/history_source)
+được thăm dò chủ yếu bằng **random-search** (cell 6b, subset 15% user, ep2 trừ khi ghi khác). Số WARM = cột
+`test_*` của `runs.csv` (**checkpoint-path**, cùng đường đo §4 — KHÔNG trộn serve-path `RESULTS.md §3b`); số
+COLD = `cold_runs.csv` (val_cold, 8.388 user). Cột bảng: warm `r@100 / r@200 / ndcg@10 / liked_ndcg@10`
+‖ cold `r@200 / honly_r@200 / ndcg@10`.
+
+> ⚠️ **Đọc đúng mức**: phần lớn run là điểm random-search, **nhiều knob đồng biến** (đổi optimizer thường đổi
+> kèm width/α/wd) → KHÔNG phải A/B một-yếu-tố. Bảng nào **cô lập sạch** được đánh dấu *(sạch)*; bảng confounded
+> đánh dấu *(thăm dò)* — chỉ đọc xu hướng, không kết luận đơn yếu tố. Anchor để định cỡ: `final`
+> (warm checkpoint-path ndcg@10 **.4242** / r@200 **.6852** — ndcg thấp là đặc thù H-noise của `history_source=embed`,
+> serve-path thật .5323, xem `RESULTS.md §2/§3b`); `v5_hist64_ep2` (.5135 / .6608).
+
+### 5.1. Pooling history (`attn` vs `mean`) + `score_pool` — *(cụm gần nhau warm; cold tách rõ)*
+
+Mọi run hl256/embed/uf015/ep2 (τ/m_hardneg đồng biến nhẹ giữa các dòng):
+
+| history_pool · score_pool | warm r@100 | r@200 | ndcg@10 | liked_ndcg@10 | cold r@200 | honly_r@200 | cold ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| **attn** (mhn5 τ.005, best attn) | .4950 | .6293 | .5075 | .3644 | .2884 | .7936 | **.0662** |
+| **attn** (mhn10 τ.005) | .4950 | .6293 | .5036 | .3632 | .3031 | .7968 | **.0702** |
+| **mean · none** (mhn10 τ.007) ★ | .4981 | .6313 | .5036 | .3627 | .4109 | .8304 | .1236 |
+| mean · linear (mhn5 τ.005) | .4914 | .6243 | .5060 | .3800 | .4047 | .8240 | .1100 |
+| mean · learned (mhn5 τ.005) | .4977 | .6310 | .4994 | .3613 | .4071 | .8251 | .1141 |
+
+**Đọc**: warm gần như đồng đều (ndcg@10 .49–.51 mọi cấu hình) → pooling **không phải lever warm**. Nhưng **cold
+tách rõ**: `attn` sụp (cold ndcg@10 **.066–.070**, r@200 .29–.30) so với `mean` (.11–.12, r@200 ~.41) — learned-query
+attention **co-adapt với history warm, hỏng backoff cold** (đúng quan sát "attn không cải thiện khi vec history bị
+detach"). `score_pool` none/linear/learned tương đương cả warm lẫn cold → **trung tính**. → chốt **`history_pool=mean`,
+`score_pool=none`** (đơn giản nhất, không thua warm, thắng cold). Đây là nguồn số cho `TWO_TOWER_MODEL.md`.
+
+### 5.2. `id_dropout` (0.15 / 0.30 / 0.50) — *(sạch)*
+
+Cô lập sạch: embed/hl128/uf015/ep2/bs16384, chỉ đổi `id_dropout`.
+
+| id_dropout | warm r@100 | r@200 | ndcg@10 | liked_ndcg@10 | cold r@200 | honly_r@200 | cold ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| **0.15** ★ | .4887 | **.6211** | **.5047** | **.3698** | **.3747** | .8130 | .1114 |
+| 0.30 | .4799 | .6131 | .4807 | .3520 | .3511 | .8062 | .1225 |
+| 0.50 | .4763 | .6076 | .4738 | .3498 | .3413 | .8139 | .1310 |
+
+**Đọc**: warm **giảm đơn điệu** theo dropout (ndcg@10 .5047→.4738, r@200 .6211→.6076) — dropout id cao làm
+**underfit id-path** warm. Cold **ngược chiều nhẹ**: cold ndcg@10 tăng (.1114→.1310) nhưng cold r@200 lại giảm
+(.3747→.3413) — ép dùng content nhiều hơn giúp head cold chút nhưng tổng recall cold vẫn tụt. Net **0.15 thắng** (ưu
+tiên warm + cold recall; final dùng 0.15).
+
+### 5.3. MLP width (`hl`) + embedding dim (`d`) — *(width thăm dò; d cặp sạch)*
+
+| run | warm r@100 | r@200 | ndcg@10 | liked_ndcg@10 | cold r@200 | honly_r@200 | cold ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| hl32 (embed ep2) | .4656 | .5971 | .4838 | .3503 | .3085 | .7843 | .0425 |
+| hl256 (embed ep2) | .4977 | .6309 | .5007 | .3605 | .4143 | .8333 | .1283 |
+| **d128** hl256 ep8 ★ | .5267 | .6667 | .4882 | .3551 | .3836 | .8170 | **.1373** |
+| d256 hl256 ep8 | .5274 | .6663 | .5211 | .3789 | .3934 | .8251 | .1086 |
+
+**Đọc**: width hl32→hl256 nâng cả warm (ndcg@10 .4838→.5007) lẫn cold mạnh (cold ndcg@10 .0425→.1283) — "rộng hơn
+tốt hơn" rõ, nhưng run hl256 đổi kèm `weight_decay` nên *(thăm dò)*, không đơn yếu tố. `d`: **cặp khớp** (ep8/hl256/embed/lr.0015)
+→ d256 nhỉnh warm ndcg@10 (.5211 vs .4882), recall@200 ~ngang (.6663 vs .6667), **nhưng cold kém** (cold ndcg@10 .1086
+vs **.1373**). → chốt **`d=128`**: cold tốt hơn + nhẹ/nhanh serve, warm recall ngang (head-precision là việc của ranker).
+
+### 5.4. Optimizer (`adam` vs `adamw`) + `weight_decay` — *(thăm dò, confounded)*
+
+Không có cặp khớp hoàn toàn — `optimizer` luôn đổi kèm width/α/wd, nên chỉ đọc xu hướng:
+
+| run | warm r@100 | r@200 | ndcg@10 | liked_ndcg@10 | cold r@200 | cold ndcg@10 |
+|---|---|---|---|---|---|---|
+| cache · adam · α1 · hl256 · wd1e-5 | .4641 | .5998 | .4287 | .3077 | .4146 | .1323 |
+| cache · adamw · α1 · hl96 · wd1e-5 | .4774 | .6112 | .4664 | .3373 | .3482 | .0982 |
+| cache · adamw · α.75 · hl96 · wd1e-5 | .4691 | .6054 | .4429 | .3070 | .4124 | .1153 |
+| embed · adam · α1 · hl32 · wd1e-5 | .4656 | .5971 | .4838 | .3503 | .3085 | .0425 |
+| embed · adamw · α.75 · hl32 · wd0 | .4735 | .6083 | .4555 | .3173 | .3807 | .1172 |
+
+**Đọc**: hướng **không nhất quán** — `adamw` nhỉnh ở nhóm cache hl96 (.4664 > cache adam hl256 .4287, nhưng width
+khác), còn ở embed hl32 thì `adam` α1 (.4838) > `adamw` α.75 (.4555, nhưng α/wd khác). → optimizer/wd **KHÔNG phải
+lever quyết định**; lực chi phối thật là `history_source` + epoch (§5.5). final dùng **`adam`** (mặc định) xuyên suốt.
+
+### 5.5. Confirm runs — epochs + `history_source` (dẫn tới `final`) — *(thăm dò → chốt)*
+
+Chuỗi confirm trên full data (bỏ subset), tăng dần epoch về `final` (ep10):
+
+| run | warm r@100 | r@200 | ndcg@10 | liked_ndcg@10 | cold r@200 | honly_r@200 | cold ndcg@10 |
+|---|---|---|---|---|---|---|---|
+| embed ep2 (hist32) | .5125 | .6465 | .4639 | .3436 | .3914 | .8433 | .1498 |
+| embed ep4 hl128 | .5411 | .6777 | .4552 | .3352 | .4359 | .8490 | .1694 |
+| cache ep6 hl128 | .5355 | .6736 | .4462 | .3261 | .4153 | .8221 | .1697 |
+| embed ep6 hl256 | .5284 | .6693 | .5042 | .3703 | .4264 | .8200 | .1120 |
+| embed ep8 hl256 | .5267 | .6667 | .4882 | .3551 | .3836 | .8170 | .1373 |
+| **`final` embed ep10** ★ | .5462 | **.6852** | .4242 | .3145 | **.4664** | .8234 | .1398 |
+
+**Đọc**: warm r@200 (candidate-generation feeding ranker) **leo dần tới `final` ep10** (.6852, cao nhất) và cold r@200
+cũng đạt đỉnh ở `final` (.4664). `embed` ≥ `cache` ở recall sâu. ndcg@10 checkpoint-path của `final` thấp (.4242) là
+**đặc thù H-noise** của `history_source=embed` lúc eval-train — serve-path thật .5323 (`RESULTS.md §2/§3b`). → xác nhận
+hướng chốt: **`history_source=embed`, train tới ep10**.
+
+## 6. Quy trình end-to-end
 
 ```bash
 # (local, 1 lần) sinh synopsis artifact rồi đẩy 2 .npy lên Drive train-data/
@@ -185,7 +280,7 @@ subset 15%) → xem `runs.csv` (lọc `train_user_frac=0.15`) chọn top-K → *
 (bỏ `train_user_frac`) → chốt model final → re-export `artifacts/` + retrain ranker (`RANKER.md §9`)
 → final-exam (test + test_cold) chấm 1 lần.
 
-## 6. Đọc số khi viết báo cáo
+## 7. Đọc số khi viết báo cáo
 
 - **Bảng so config**: `runs.csv` (cột knob + `{val,test}_{recall,ndcg}@K`). Tách coarse (subset, có
   `train_user_frac`) vs confirm (full) — chỉ kết luận final từ **confirm trên full data**.
