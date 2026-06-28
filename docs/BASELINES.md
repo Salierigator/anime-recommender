@@ -36,7 +36,7 @@ Mỗi baseline chỉ cần cấp 1 hàm `score_fn(u, hist) -> scores [E, N]`; to
 
 ### 3.1 `rand.py` — Random (sàn, warm + cold)
 
-Điểm uniform ngẫu nhiên (seed cố định) cho mọi candidate. Có công thức giải thích `recall@K ≈ K/N_cand` in kèm trong output — sai lệch giữa số đo và giải tích là sanity check cho harness.
+Điểm uniform ngẫu nhiên (seed cố định) cho mọi candidate. Có công thức giải tích `recall@K ≈ K/N_cand` in kèm trong output — sai lệch giữa số đo và giải tích là sanity check cho harness.
 
 ### 3.2 `popular.py` — MostPopular (warm only)
 
