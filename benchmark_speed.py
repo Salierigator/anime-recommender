@@ -65,6 +65,25 @@ def bench_throughput(call_chunk, sample) -> float:
     return len(sample) / el
 
 
+def host_info() -> tuple[str, str]:
+    """(host, stack) để stamp vào header — số tuyệt đối chỉ có nghĩa khi biết máy."""
+    import platform
+    if platform.system() == "Darwin":
+        def sc(k):
+            return subprocess.run(["sysctl", "-n", k], capture_output=True,
+                                  text=True).stdout.strip()
+        cpu, cores, memb = sc("machdep.cpu.brand_string"), sc("hw.logicalcpu"), sc("hw.memsize")
+        ram = f"{int(memb)//1024**3} GB" if memb.isdigit() else "?"
+        host = f"{cpu} · {cores} logical cores · {ram} · macOS {platform.mac_ver()[0]}"
+    else:
+        host = f"{platform.processor() or '?'} · {os.cpu_count()} logical cores · {platform.platform()}"
+    import torch
+    import lightgbm
+    stack = (f"python {platform.python_version()} · torch {torch.__version__} · "
+             f"lightgbm {lightgbm.__version__} · numpy {np.__version__}")
+    return host, stack
+
+
 def pick_sample(uids: list[int], n: int) -> list[int]:
     uids = sorted(int(u) for u in uids)
     rng = np.random.default_rng(SEED)
@@ -253,8 +272,11 @@ def spawn(worker: str, out_path: Path, n_sample: int):
 def render(baselines: dict, model: dict, n_sample: int) -> str:
     methods = {**baselines["methods"], **model["methods"]}
     L = []
+    host, stack = host_info()
     L.append("# benchmark_speed — tốc độ recommend (online latency mỗi request)")
     L.append(f"# generated {time.strftime('%Y-%m-%dT%H:%M:%S')}  device=cpu  threads={THREADS}")
+    L.append(f"# host  = {host}")
+    L.append(f"# stack = {stack}")
     L.append(f"# sample = {n_sample} user warm-test ngẫu nhiên (seed={SEED})  top_k={TOPK}"
              f"  k_retrieve(two-stage)={model.get('k_retrieve', '?')}")
     L.append(f"# candidates (finite logq) = {baselines.get('n_cand', '?'):,}")

@@ -24,6 +24,7 @@ Một chỗ tra MỌI con số của pipeline (retriever / ranker / two-stage / 
 | **Thử nghiệm chọn final** (synopsis on/off, subset HP-search, search runs) | leaderboard `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) + `runs/v5/<run>/config.json` (Drive, provenance đầy đủ) | phương pháp + thiết kế: `docs/EXPERIMENTS.md` |
 | **Ablation kiến trúc/regularization** (pooling/attn · score_pool · id_dropout · MLP width · d · optimizer/wd · epochs) — bảng warm+cold | `runs.csv`/`cold_runs.csv` (bản local `retriever/runs/`) | bảng số + đọc: `docs/EXPERIMENTS.md §5` |
 | Baselines retriever (TEST warm + cold) | `retriever/baselines/*.txt` | phương pháp: `docs/BASELINES.md` |
+| **Hiệu năng** (latency/throughput phục vụ mọi method + phân rã rerank) | `benchmark_speed.txt` | phân tích + defensibility: `docs/SPEED.md` |
 | Ranker per-model: **sweep α** + val + cold diagnostic | `ranker/models/<run>/results.txt` (+ `row.json`: hyperparam, train_sec) | CHỈ VAL — kỷ luật giữ test sạch |
 | Ranker leaderboard mọi run Colab | `ranker_runs.csv` (Drive) | ngoài repo |
 | **Two-stage CHỐT**: val + test + cold + pool ceiling + feature importance + provenance | `artifacts/ranker_meta.json` (bản ghi lúc chọn: `ranker/models/eval_selection.json`) | test chấm đúng 1 lần sau khi chốt trên val |
