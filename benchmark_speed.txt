@@ -1,0 +1,26 @@
+# benchmark_speed — tốc độ recommend (online latency mỗi request)
+# generated 2026-06-29T11:34:42  device=cpu  threads=4
+# sample = 3000 user warm-test ngẫu nhiên (seed=123)  top_k=20  k_retrieve(two-stage)=200
+# candidates (finite logq) = 22,821
+# vùng đo = fetch history -> score -> mask seen -> topk (+ rerank LightGBM cho
+#   two-stage). LOẠI: load artifact, train offline (ALS/sim/popularity), lookup title.
+# MF: model fit subset 15k-user (f128/α1) — online latency phụ thuộc factors, KHÔNG
+#   phụ thuộc #train-user nên trung thực; itemknn fit FULL train (K=50).
+
+## per-request latency (E=1, ms) + throughput (batch 64, rec/s)
+method              p50     mean      p90      p95      rec/s
+--------------------------------------------------------------
+random             0.09     0.09     0.10     0.10      19562
+popular            0.06     0.06     0.06     0.07      65578
+meta_popular       0.06     0.06     0.06     0.07      66430
+content            0.77     0.79     0.85     0.90       6076
+itemknn            0.18     0.19     0.25     0.28      16255
+mf                 0.30     0.33     0.41     0.46       7665
+two-tower          0.21     0.23     0.28     0.30      15913
+two-stage          6.49     6.54     6.81     6.95        194
+
+## two-stage — tách chi phí 2 stage (per-request p50/mean ms)
+  retrieval (cosine top-200)  p50=0.43  mean=0.44
+  rerank (29 feat + LightGBM)   p50=6.05  mean=6.09
+  tổng                          p50=6.49  mean=6.54
+
