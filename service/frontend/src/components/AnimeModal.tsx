@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { fetchAnimeDetail } from '../utils/jikanQueue';

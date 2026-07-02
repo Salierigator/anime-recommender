@@ -55,12 +55,15 @@ class Recommender:
         self.mal2idx = dict(zip(real["mal_id"].to_list(), real["anime_idx"].to_list()))
         det = pd.read_csv(CLEANED / "details.csv",
                           usecols=["mal_id", "title", "type", "score", "start_date",
-                                   "genres", "rating"])
+                                   "genres", "themes", "studios", "rating"])
         det["year"] = pd.to_datetime(det["start_date"], errors="coerce", utc=True).dt.year
-        self.detail = det.set_index("mal_id")[["title", "type", "score", "year"]]
+        for col in ("genres", "themes", "studios"):        # str -> list[str] (cho filter client)
+            det[col] = det[col].map(_parse_list)
+        self.detail = det.set_index("mal_id")[["title", "type", "score", "year",
+                                               "genres", "themes", "studios"]]
         # SFW: anime_idx của item hentai (genre 'Hentai' HOẶC rating 'Rx - Hentai')
         is_hentai = (det["rating"] == "Rx - Hentai") | \
-            det["genres"].map(lambda s: "Hentai" in _parse_list(s))
+            det["genres"].map(lambda g: "Hentai" in g)
         self.nsfw_idx = np.asarray(
             [self.mal2idx[m] for m in det.loc[is_hentai, "mal_id"] if m in self.mal2idx],
             dtype=np.int64)
@@ -136,11 +139,14 @@ class Recommender:
                          self.cap)
         # SFW: union item hentai vào mask → rớt khỏi cả pool warm lẫn cold trước khi rank
         block = np.union1d(user["seen"], self.nsfw_idx) if sfw else user["seen"]
+        # serve có thể lấy pool sâu hơn k_retrieve (feature item bất biến theo depth: pool_rank
+        # là hạng cosine tuyệt đối) → client lo filter/slice; top vẫn khớp điểm vận hành k_retrieve
+        depth = max(self.k_retrieve, top_k)
         if anchor_mal_id is None:
             mask = [block]
             cold_query = U
             # [Gợi ý] warm-only → rerank LightGBM (cold_serving: cold KHÔNG qua ranker)
-            cand, cos = topk_pool(U, self.enc.item_cache, mask, self.k_retrieve,
+            cand, cos = topk_pool(U, self.enc.item_cache, mask, depth,
                                   cold_idx=self.cold_idx)
         else:
             # "giống X": pool theo anchor, nhưng cos_uv tính lại = user-item (ranker đúng phân phối)
@@ -149,7 +155,7 @@ class Recommender:
                 raise KeyError(anchor_mal_id)
             cold_query = self.enc.item_cache[aidx:aidx + 1]    # [1, d] = vector của X
             mask = [np.union1d(block, [aidx])]                 # loại chính X
-            cand, _ = topk_pool(cold_query, self.enc.item_cache, mask, self.k_retrieve,
+            cand, _ = topk_pool(cold_query, self.enc.item_cache, mask, depth,
                                 cold_idx=self.cold_idx)
             cos = (U @ self.enc.item_cache[torch.from_numpy(cand[0])].t()).numpy()  # [1, k]
         stats = user_stats_from_support([user["hist_score"]],
@@ -178,9 +184,12 @@ class Recommender:
         return {
             "mal_id": mal_id,
             "title": str(d["title"]) if d is not None else "?",
-            "type": str(d["type"]) if d is not None else "?",
+            "type": str(d["type"]) if d is not None and pd.notna(d["type"]) else "?",
             "year": int(d["year"]) if d is not None and pd.notna(d["year"]) else None,
             "mal_score": round(float(d["score"]), 2)
                          if d is not None and pd.notna(d["score"]) else None,
+            "genres": list(d["genres"]) if d is not None else [],
+            "themes": list(d["themes"]) if d is not None else [],
+            "studios": list(d["studios"]) if d is not None else [],
             **{k: round(v, 4) for k, v in scores.items()},
         }

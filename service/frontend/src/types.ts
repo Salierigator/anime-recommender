@@ -7,6 +7,9 @@ export interface AnimeItem {
   pred?: number | null;
   cos?: number | null;
   image_url: string | null;
+  genres: string[];
+  themes: string[];
+  studios: string[];
 }
 
 export interface RecommendMeta {
@@ -16,15 +19,14 @@ export interface RecommendMeta {
   alpha: number | null;
   k_retrieve: number | null;
   mode: string;
+  total_entries: number | null;
 }
 
 export interface RecommendRequest {
-  username?: string | null;
-  mal_ids?: number[] | null;
-  top_k?: number;
-  cold_k?: number;
-  live?: boolean;
-  anchor_mal_id?: number | null;
+  username: string;
+  top_k: number;
+  cold_k: number;
+  sfw?: boolean;
 }
 
 export interface RecommendResponse {

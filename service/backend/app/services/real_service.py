@@ -28,15 +28,17 @@ class RealService(RecommenderService):
     def recommend(self, req: RecommendRequest) -> RecommendResponse:
         if req.mal_ids:
             user = self.rec.user_from_mal_ids(req.mal_ids)
+            total_entries = len(req.mal_ids)
         else:                                                # username: luôn crawl live
             animelist, profile = self._fetch_live(req.username)
-            if not animelist:
+            if not animelist:                                # rỗng / user không tồn tại / private / lỗi mạng
                 raise HTTPException(
                     status_code=404,
-                    detail=f"Không lấy được animelist cho '{req.username}' "
-                           "(user không tồn tại, list private, hoặc rỗng).",
+                    detail=f"Can't get recommendations for '{req.username}' "
+                           "(invalid username, private list, or connection error).",
                 )
             user = self.rec.user_from_animelist(animelist, profile, req.username)
+            total_entries = len(animelist)                   # tổng entries trên list (khớp profile)
 
         try:
             out = self.rec.recommend(user, top_k=req.top_k, cold_k=req.cold_k,
@@ -51,7 +53,7 @@ class RealService(RecommenderService):
             cold=[AnimeItem(**r) for r in out["cold"]],
             meta=RecommendMeta(
                 source=user["source"], split=user["split"],
-                history_count=len(user["hist_idx"]),
+                history_count=len(user["hist_idx"]), total_entries=total_entries,
                 alpha=self.rec.alpha, k_retrieve=self.rec.k_retrieve, mode="live",
             ),
         )

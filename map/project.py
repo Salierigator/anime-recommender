@@ -28,8 +28,8 @@ def fit(X: np.ndarray, n_neighbors: int, min_dist: float):
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Fit pumap2d -> coords + reducer")
-    ap.add_argument("--n-neighbors", type=int, default=15)
-    ap.add_argument("--min-dist", type=float, default=0.1)
+    ap.add_argument("--n-neighbors", type=int, default=50)
+    ap.add_argument("--min-dist", type=float, default=0.8)
     args = ap.parse_args()
 
     base, X = C.load_base()

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // Cache to store resolved full Jikan data objects
 const CACHE = new Map<number, any>();
 

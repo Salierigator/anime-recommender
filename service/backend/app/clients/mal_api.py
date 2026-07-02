@@ -58,9 +58,14 @@ MAL_HEADERS = {"X-MAL-CLIENT-ID": _load_client_id()}
 
 
 def _get(url, *, headers=None, params=None, retries=2):
-    """GET -> parsed JSON, with a small backoff retry on 429 (rate limit)."""
+    """GET -> parsed JSON, with a small backoff retry on 429 (rate limit).
+    Network error / non-200 -> None (callers treat None as fetch failure)."""
     for attempt in range(retries + 1):
-        resp = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=TIMEOUT)
+        except requests.RequestException as e:                # connection/timeout
+            print(f"[-] request error {url} -> {e}")
+            return None
         if resp.status_code == 200:
             return resp.json()
         if resp.status_code == 429 and attempt < retries:

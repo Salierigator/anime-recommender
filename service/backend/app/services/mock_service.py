@@ -28,6 +28,7 @@ class MockService(RecommenderService):
             source="mock",
             split=fmeta.get("split", "-"),
             history_count=fmeta.get("history_count", 0),
+            total_entries=fmeta.get("total_entries"),
             alpha=fmeta.get("alpha"),
             k_retrieve=fmeta.get("k_retrieve"),
             mode="mock",

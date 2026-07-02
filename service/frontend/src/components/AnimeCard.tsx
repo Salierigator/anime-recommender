@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { AnimeItem } from '../types';
@@ -8,44 +9,36 @@ interface Props {
   rank?: number;
   onClick?: () => void;
   posterUrl?: string | null;
-  isPostersLoading?: boolean;
 }
 
-export function AnimeCard({ anime, rank, onClick, posterUrl, isPostersLoading = false }: Props) {
+export function AnimeCard({ anime, rank, onClick, posterUrl }: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
-  const [isUrlFetched, setIsUrlFetched] = useState<boolean>(false);
+  const [isUrlResolved, setIsUrlResolved] = useState<boolean>(false);
   const [isImageLoaded, setIsImageLoaded] = useState<boolean>(false);
 
+  // posterUrl?: string | null   (undefined = batch chưa fetch; null = batch báo không có; string = URL)
   useEffect(() => {
-    if (isPostersLoading) {
+    let mounted = true;
+    if (posterUrl === undefined) {          // đang chờ batch: spinner, KHÔNG gọi Jikan
+      setIsUrlResolved(false);
+      setIsImageLoaded(false);
       return;
     }
-
-    let isMounted = true;
-
-    if (posterUrl) {
-      // Backend provided a URL
+    if (posterUrl) {                         // có URL từ backend
       setImageUrl(posterUrl);
-      setIsUrlFetched(true);
-      setIsImageLoaded(false);
-    } else {
-      // Backend returned null or undefined, fallback to Jikan
-      setIsUrlFetched(false);
-      fetchAnimePoster(anime.mal_id).then((url) => {
-        if (isMounted) {
-          setImageUrl(url);
-          setIsUrlFetched(true);
-          if (!url) {
-            setIsImageLoaded(true);
-          }
-        }
-      });
+      setIsUrlResolved(true);
+      setIsImageLoaded(false);               // onLoad sẽ bật lại; chỉ chạy khi posterUrl ĐỔI
+      return;
     }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [anime.mal_id, posterUrl, isPostersLoading]);
+    setIsUrlResolved(false);                 // posterUrl === null → fallback Jikan
+    fetchAnimePoster(anime.mal_id).then((url) => {
+      if (!mounted) return;
+      setImageUrl(url);
+      setIsUrlResolved(true);
+      setIsImageLoaded(!url);                // không có ảnh → tắt spinner, hiện "No Image"
+    });
+    return () => { mounted = false; };
+  }, [anime.mal_id, posterUrl]);
 
   const handleImageError = () => {
     // If the image fails to load, fallback to Jikan
@@ -89,7 +82,7 @@ export function AnimeCard({ anime, rank, onClick, posterUrl, isPostersLoading = 
           )}
 
           {/* Fallback Text if No Image */}
-          {!imageUrl && isUrlFetched && (
+          {!imageUrl && isUrlResolved && (
             <span className="text-xs text-gray-400 font-medium px-2 text-center z-0">No Image</span>
           )}
         </div>
