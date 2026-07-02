@@ -50,6 +50,7 @@ interface MultiSelectProps {
   onChange: (selected: string[]) => void;
   showSearch?: boolean;
   single?: boolean;
+  isCompact?: boolean;
 }
 
 function MultiSelectDropdown({
@@ -58,7 +59,8 @@ function MultiSelectDropdown({
   selected,
   onChange,
   showSearch = false,
-  single = false
+  single = false,
+  isCompact = false
 }: MultiSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,19 +134,23 @@ function MultiSelectDropdown({
   const showAllOption = single && !label.startsWith('Show');
 
   return (
-    <div className="relative flex-1 min-w-[150px]" ref={dropdownRef}>
-      <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-        {label}
-      </span>
+    <div className={`relative flex-1 ${isCompact ? 'min-w-[120px]' : 'min-w-[150px]'}`} ref={dropdownRef}>
+      {!isCompact && (
+        <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+          {label}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-white border border-gray-300 text-gray-900 px-3 py-2 text-sm flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900 cursor-pointer transition-colors"
+        className={`w-full bg-white border border-gray-300 text-gray-900 flex items-center justify-between hover:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-900 cursor-pointer transition-colors ${
+          isCompact ? 'px-2 py-1 text-xs' : 'px-3 py-2 text-sm'
+        }`}
       >
         <span className="truncate">
-          {getButtonText()}
+          {isCompact ? `${label}: ${getButtonText()}` : getButtonText()}
         </span>
-        <ChevronDown className="w-4 h-4 text-gray-500 ml-2 flex-shrink-0" />
+        <ChevronDown className={`${isCompact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-gray-500 ml-1.5 flex-shrink-0`} />
       </button>
 
       {isOpen && (
@@ -231,6 +237,27 @@ export function SearchForm({
   hasPool
 }: Props) {
   const [username, setUsername] = useState('');
+  const [isSticky, setIsSticky] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+
+  useEffect(() => {
+    if (!hasPool) {
+      setIsSticky(false);
+      return;
+    }
+
+    const handleScroll = () => {
+      // Threshold represents scrolling past the title & search input row
+      setIsSticky(window.scrollY > 240);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Check immediately in case page is already scrolled
+
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [hasPool]);
+
+  const isCompact = isSticky && !isHovered;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -267,82 +294,183 @@ export function SearchForm({
 
       {/* Client-side Filter Panel */}
       {hasPool && (
-        <div className="p-5 border border-gray-200 bg-gray-50 space-y-6 animate-in fade-in duration-300">
-          {/* Multi-select Row */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <MultiSelectDropdown
-              label="Genre"
-              options={facetOptions.genres}
-              selected={selectedGenres}
-              onChange={setSelectedGenres}
-            />
-            <MultiSelectDropdown
-              label="Type"
-              options={facetOptions.types}
-              selected={selectedTypes}
-              onChange={setSelectedTypes}
-              single={true}
-            />
-            <MultiSelectDropdown
-              label="Theme"
-              options={facetOptions.themes}
-              selected={selectedThemes}
-              onChange={setSelectedThemes}
-            />
-            <MultiSelectDropdown
-              label="Studio"
-              options={facetOptions.studios}
-              selected={selectedStudios}
-              onChange={setSelectedStudios}
-              showSearch={true}
-            />
-          </div>
+        <div className={isSticky ? 'h-[184px]' : ''}>
+          <div
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            className={`
+              transition-all duration-300 ease-in-out
+              ${isSticky 
+                ? 'fixed top-0 left-0 right-0 bg-white border-b border-gray-200 shadow-md z-40' 
+                : 'p-5 border border-gray-200 bg-gray-50'
+              }
+            `}
+          >
+            <div className={`max-w-6xl mx-auto transition-all duration-300 ${isSticky ? (isCompact ? 'py-2 px-4' : 'p-5') : ''} ${isCompact ? 'space-y-0' : 'space-y-6'}`}>
+              {isCompact ? (
+                <div className="flex flex-col md:flex-row md:items-center gap-4 w-full animate-in fade-in duration-200">
+                  {/* 4 main dropdowns */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 flex-1">
+                    <MultiSelectDropdown
+                      label="Genre"
+                      options={facetOptions.genres}
+                      selected={selectedGenres}
+                      onChange={setSelectedGenres}
+                      isCompact={true}
+                    />
+                    <MultiSelectDropdown
+                      label="Type"
+                      options={facetOptions.types}
+                      selected={selectedTypes}
+                      onChange={setSelectedTypes}
+                      single={true}
+                      isCompact={true}
+                    />
+                    <MultiSelectDropdown
+                      label="Theme"
+                      options={facetOptions.themes}
+                      selected={selectedThemes}
+                      onChange={setSelectedThemes}
+                      isCompact={true}
+                    />
+                    <MultiSelectDropdown
+                      label="Studio"
+                      options={facetOptions.studios}
+                      selected={selectedStudios}
+                      onChange={setSelectedStudios}
+                      showSearch={true}
+                      isCompact={true}
+                    />
+                  </div>
+                  
+                  {/* Score Slider (Compact) */}
+                  <div className="flex items-center gap-2 flex-1 max-w-xs min-w-[150px]">
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <span className="block text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                        Score ≥
+                      </span>
+                      <span className="text-[10px] font-mono font-semibold text-gray-900 bg-white border border-gray-200 px-1 py-0.5 rounded-sm">
+                        {minScore.toFixed(1)}
+                      </span>
+                    </div>
+                    <div className="h-6 flex items-center flex-grow">
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        step="0.5"
+                        value={minScore}
+                        onChange={(e) => setMinScore(parseFloat(e.target.value))}
+                        className="w-full h-1 bg-gray-200 appearance-none cursor-pointer accent-gray-900 focus:outline-none"
+                      />
+                    </div>
+                  </div>
 
-          {/* Slider and Size Selectors Row */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-            {/* Score Slider */}
-            <div className="w-full">
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  Score ≥
-                </span>
-                <span className="text-xs font-mono font-semibold text-gray-900 bg-white border border-gray-200 px-2 py-0.5 rounded-sm">
-                  {minScore.toFixed(1)}
-                </span>
-              </div>
-              <div className="h-[38px] flex items-center">
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  step="0.5"
-                  value={minScore}
-                  onChange={(e) => setMinScore(parseFloat(e.target.value))}
-                  className="w-full h-1 bg-gray-200 appearance-none cursor-pointer accent-gray-900 focus:outline-none"
-                />
-              </div>
-            </div>
+                  {/* Show Main & Show Cold */}
+                  <div className="grid grid-cols-2 gap-2 w-56 flex-shrink-0">
+                    <MultiSelectDropdown
+                      label="Show Main"
+                      options={["10", "20", "50", "100", "250", "500"]}
+                      selected={[String(mainK)]}
+                      onChange={(val) => {
+                        if (val.length > 0) setMainK(Number(val[0]));
+                      }}
+                      single={true}
+                      isCompact={true}
+                    />
+                    <MultiSelectDropdown
+                      label="Show Cold"
+                      options={["5", "10", "20", "50", "100", "200"]}
+                      selected={[String(coldK)]}
+                      onChange={(val) => {
+                        if (val.length > 0) setColdK(Number(val[0]));
+                      }}
+                      single={true}
+                      isCompact={true}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-6 animate-in fade-in duration-200 w-full">
+                  {/* Multi-select Row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <MultiSelectDropdown
+                      label="Genre"
+                      options={facetOptions.genres}
+                      selected={selectedGenres}
+                      onChange={setSelectedGenres}
+                    />
+                    <MultiSelectDropdown
+                      label="Type"
+                      options={facetOptions.types}
+                      selected={selectedTypes}
+                      onChange={setSelectedTypes}
+                      single={true}
+                    />
+                    <MultiSelectDropdown
+                      label="Theme"
+                      options={facetOptions.themes}
+                      selected={selectedThemes}
+                      onChange={setSelectedThemes}
+                    />
+                    <MultiSelectDropdown
+                      label="Studio"
+                      options={facetOptions.studios}
+                      selected={selectedStudios}
+                      onChange={setSelectedStudios}
+                      showSearch={true}
+                    />
+                  </div>
 
-            {/* Sizes Selectors */}
-            <div className="grid grid-cols-2 gap-4 w-full">
-              <MultiSelectDropdown
-                label="Show Main"
-                options={["10", "20", "50", "100", "250", "500"]}
-                selected={[String(mainK)]}
-                onChange={(val) => {
-                  if (val.length > 0) setMainK(Number(val[0]));
-                }}
-                single={true}
-              />
-              <MultiSelectDropdown
-                label="Show Cold"
-                options={["5", "10", "20", "50", "100", "200"]}
-                selected={[String(coldK)]}
-                onChange={(val) => {
-                  if (val.length > 0) setColdK(Number(val[0]));
-                }}
-                single={true}
-              />
+                  {/* Slider and Size Selectors Row */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                    {/* Score Slider */}
+                    <div className="w-full">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                          Score ≥
+                        </span>
+                        <span className="text-xs font-mono font-semibold text-gray-900 bg-white border border-gray-200 px-2 py-0.5 rounded-sm">
+                          {minScore.toFixed(1)}
+                        </span>
+                      </div>
+                      <div className="h-[38px] flex items-center">
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          step="0.5"
+                          value={minScore}
+                          onChange={(e) => setMinScore(parseFloat(e.target.value))}
+                          className="w-full h-1 bg-gray-200 appearance-none cursor-pointer accent-gray-900 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Sizes Selectors */}
+                    <div className="grid grid-cols-2 gap-4 w-full">
+                      <MultiSelectDropdown
+                        label="Show Main"
+                        options={["10", "20", "50", "100", "250", "500"]}
+                        selected={[String(mainK)]}
+                        onChange={(val) => {
+                          if (val.length > 0) setMainK(Number(val[0]));
+                        }}
+                        single={true}
+                      />
+                      <MultiSelectDropdown
+                        label="Show Cold"
+                        options={["5", "10", "20", "50", "100", "200"]}
+                        selected={[String(coldK)]}
+                        onChange={(val) => {
+                          if (val.length > 0) setColdK(Number(val[0]));
+                        }}
+                        single={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

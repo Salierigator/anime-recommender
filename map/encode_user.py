@@ -80,22 +80,25 @@ def main() -> None:
                      np.array([gender], np.int64), np.array([joined], np.int64), cap)  # [1,d]
     Un = U.numpy()
 
-    # top-K gợi ý: cosine full catalog, loại PAD/OOV + item đã xem (seen)
+    coords = C.load_coords(args.method).set_index("anime_idx")
+    base = pd.read_parquet(C.OUTPUTS / "base.parquet").set_index("anime_idx")
+
+    # top-K gợi ý: cosine full catalog NHƯNG chỉ giữ item CÓ trên map (coords = base SFW real, đã
+    # loại hentai + PAD/OOV) → neighbor nhất quán với map train-không-hentai. Khớp serving: U mã hoá
+    # từ FULL history, chỉ lọc nsfw ở ĐẦU RA. Loại thêm item đã xem (seen).
     cos = (U @ enc.item_cache.t()).numpy()[0]
-    cos[:2] = -np.inf
+    on_map = np.zeros(len(cos), dtype=bool)
+    on_map[coords.index.to_numpy()] = True
+    cos[~on_map] = -np.inf
     cos[ids] = -np.inf
     nbr = np.argsort(-cos)[: args.top_k].astype(np.int64)
 
     reducer = C.load_reducer(args.method)
     user_xy = C.transform_to_coords(args.method, reducer, Un)[0]
-    coords = C.load_coords(args.method).set_index("anime_idx")
 
     rows = [{"kind": "user", "label": name, "anime_idx": -1,
              "x": float(user_xy[0]), "y": float(user_xy[1])}]
-    base = pd.read_parquet(C.OUTPUTS / "base.parquet").set_index("anime_idx")
     for a in nbr:
-        if a not in coords.index:
-            continue
         c = coords.loc[a]
         title = base.loc[a, "title"] if a in base.index else str(a)
         rows.append({"kind": "neighbor", "label": str(title), "anime_idx": int(a),
