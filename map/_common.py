@@ -20,7 +20,8 @@ ARTIFACTS = ROOT / "artifacts"
 CLEANED = ROOT / "cleaned-data"
 OUTPUTS = Path(__file__).resolve().parent / "outputs"
 
-DETAIL_COLS = ["mal_id", "title", "type", "genres", "themes", "studios", "popularity", "start_date"]
+DETAIL_COLS = ["mal_id", "title", "type", "genres", "themes", "studios", "popularity",
+               "start_date", "rating"]
 
 
 def _parse_list(v):
@@ -38,7 +39,8 @@ def build_base_table() -> tuple[pd.DataFrame, np.ndarray]:
     """Join item_vectors + item_index + details -> (base_df, vectors_real) căn hàng theo row.
 
     base_df cột: anime_idx, mal_id, title, type, primary_genre, genres_list, themes_list,
-    popularity, start_year, is_cold. Loại PAD/OOV (mal_id == -1)."""
+    popularity, start_year, is_cold. Loại PAD/OOV (mal_id == -1) + hentai (map SFW-only,
+    khớp nsfw serving: genre 'Hentai' / rating 'Rx - Hentai')."""
     import pyarrow.parquet as pq
 
     vectors = np.load(ARTIFACTS / "item_vectors.npy")
@@ -50,9 +52,14 @@ def build_base_table() -> tuple[pd.DataFrame, np.ndarray]:
 
     base["genres_list"] = base["genres"].map(_parse_list)
     base["themes_list"] = base["themes"].map(_parse_list)
+    # Map SFW-only: loại hentai KHỚP định nghĩa nsfw serving (recommender.py) — genre 'Hentai'
+    # HOẶC rating 'Rx - Hentai'. Loại TRƯỚC khi lấy vectors_real để 2 bên căn hàng.
+    is_hentai = (base["rating"] == "Rx - Hentai") | base["genres_list"].map(lambda g: "Hentai" in g)
+    print(f"map SFW: loại {int(is_hentai.sum()):,} item hentai khỏi base")
+    base = base[~is_hentai].reset_index(drop=True)
     base["primary_genre"] = base["genres_list"].map(lambda L: L[0] if L else "Unknown")
     base["start_year"] = pd.to_datetime(base["start_date"], errors="coerce").dt.year
-    base = base.drop(columns=["genres", "themes", "studios", "start_date"])
+    base = base.drop(columns=["genres", "themes", "studios", "start_date", "rating"])
 
     vectors_real = vectors[base["anime_idx"].to_numpy()]
     return base, vectors_real.astype(np.float32)

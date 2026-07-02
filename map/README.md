@@ -57,6 +57,9 @@ không theo nhãn genre:
   lý hơn; mỗi cụm tự đặt **tên theo genre+theme lift cao** (Mecha·Space=Gundam, Strategy Game·
   Adventure=Pokemon/Digimon, Suspense·Mystery=Death Note/AoT/FMA, Hentai, Boys Love·Idols…).
 - `build_base` kéo `themes_list` (Mecha/Isekai/Music…) — tín hiệu khán giả mạnh hơn genre rộng.
+- `build_base` **loại hentai** khỏi map (demo SFW-only, khớp nsfw serving: genre Hentai / rating
+  `Rx - Hentai`) → không còn cụm Hentai/Hentai(2); k cụm dồn hết cho SFW. Bỏ vì 2D chiếu nó sát rìa
+  lục địa dù 128-d rất xa (vd One Piece↔Hentai cosine −0.37) — artifact khó chịu, mà demo cũng lọc.
 
 Demographic (shounen/seinen…) bị loại làm trục màu chính: 71% rỗng.
 
