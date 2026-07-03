@@ -67,6 +67,60 @@ def add_overlays(fig, names: list[str]):
                 marker=dict(size=size, symbol=sym, color=col, line=dict(width=1, color="white"))))
 
 
+def render_territory(df: pd.DataFrame, out_path, label_top: int = 20,
+                     bins: int = 480, sigma: float = 6.0):
+    """CHỐT: bản đồ 'territory' kde_boundary (matplotlib PNG tĩnh) — mỗi cell tô theo cụm ÁP ĐẢO (KDE
+    mật độ mỗi cụm) + đường biên trắng, nhãn = tên cụm (log-odds) ở tâm top-N cụm lớn nhất. df cần
+    x, y, label, cluster (tên). KHÔNG tương tác (hover/zoom/you-are-here vẫn ở --style points / frontend)."""
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from scipy.ndimage import gaussian_filter
+
+    pal = np.array(list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors))[:, :3]
+    x, y, labels = df["x"].to_numpy(), df["y"].to_numpy(), df["label"].to_numpy()
+    uniq = sorted(set(labels.tolist()) - {-1})
+    pad = 0.5
+    ex = np.linspace(x.min() - pad, x.max() + pad, bins + 1)
+    ey = np.linspace(y.min() - pad, y.max() + pad, bins + 1)
+    stack = np.zeros((len(uniq), bins, bins))
+    for i, c in enumerate(uniq):
+        m = labels == c
+        H, _, _ = np.histogram2d(x[m], y[m], bins=[ex, ey])
+        stack[i] = gaussian_filter(H.T, sigma)
+    total, dom = stack.sum(0), stack.argmax(0)
+    img = np.zeros((bins, bins, 4))
+    for i in range(len(uniq)):
+        img[dom == i, :3] = pal[uniq[i] % len(pal)]
+    img[..., 3] = np.clip(total / np.percentile(total[total > 0], 99), 0, 1) ** 0.5 * 0.7
+
+    cx, cy = 0.5 * (ex[:-1] + ex[1:]), 0.5 * (ey[:-1] + ey[1:])
+    Xg, Yg = np.meshgrid(cx, cy)
+    fig, ax = plt.subplots(figsize=(12, 11))
+    ax.set_facecolor("#0b1020")
+    ax.set_xticks([]); ax.set_yticks([]); ax.set_aspect("equal")
+    ax.imshow(img, origin="lower", extent=[ex[0], ex[-1], ey[0], ey[-1]], aspect="equal",
+              interpolation="bilinear")
+    thr = np.percentile(total[total > 0], 40)
+    for i in range(len(uniq)):
+        mask = ((dom == i) & (total > thr)).astype(float)
+        if mask.sum() > 5:
+            ax.contour(Xg, Yg, mask, levels=[0.5], colors="white", linewidths=0.7, alpha=0.8)
+
+    from collections import Counter
+    name_by_label = df.drop_duplicates("label").set_index("label")["cluster"]
+    for lab in [l for l, _ in Counter(labels.tolist()).most_common() if l in uniq][:label_top]:
+        m = labels == lab
+        ax.text(np.median(x[m]), np.median(y[m]), str(name_by_label.get(lab, lab)), fontsize=9,
+                weight="bold", ha="center", va="center", color="white",
+                bbox=dict(boxstyle="round,pad=0.15", fc="black", alpha=0.35, ec="none"))
+    fig.suptitle(f"pumap2d · territory (kde_boundary) · {len(uniq)} cụm · {len(df):,} anime",
+                 fontsize=13, y=0.98)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 def build_fig(df: pd.DataFrame, color: str, title: str):
     """Scatter 2D + nhãn cụm + layout (KHÔNG overlay). Dùng chung CLI + sweep notebook."""
     import plotly.express as px
@@ -90,8 +144,19 @@ def main() -> None:
                     default="primary_genre")
     ap.add_argument("--cluster", default="kmeans", help="algo cho color=cluster (kmeans|hdbscan)")
     ap.add_argument("--overlay", nargs="*", default=[], help="file overlay trong outputs/ (không cần .parquet)")
-    ap.add_argument("--suffix", default="", help="hậu tố tên file html")
+    ap.add_argument("--suffix", default="", help="hậu tố tên file output")
+    ap.add_argument("--style", choices=["points", "territory"], default="points",
+                    help="points = Plotly HTML tương tác (hover/zoom/overlay); "
+                         "territory = CHỐT kde_boundary PNG tĩnh")
+    ap.add_argument("--label-top", type=int, default=20, help="territory: số cụm lớn nhất được ghi nhãn")
     args = ap.parse_args()
+
+    if args.style == "territory":                                # CHỐT: kde_boundary (k28 + log-odds)
+        df = load_plot_df(args.method, "cluster", args.cluster)
+        out = C.OUTPUTS / f"{args.method}_territory{('_' + args.suffix) if args.suffix else ''}.png"
+        render_territory(df, out, label_top=args.label_top)
+        print(f"-> {out}  (territory kde_boundary, {len(df):,} anime)")
+        return
 
     df = load_plot_df(args.method, args.color, args.cluster)
     fig = build_fig(df, args.color, f"{args.method} · color={args.color} · {len(df):,} anime")

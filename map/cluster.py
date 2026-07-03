@@ -6,7 +6,7 @@ khoảng cách). Nhãn ra dùng tô màu chéo MỌI projection (viz.py --color 
 Vector đã L2-norm -> euclidean trên vector chuẩn hoá đơn điệu với cosine (spherical k-means xấp xỉ).
 
     venv/bin/python map/cluster.py --algo hdbscan
-    venv/bin/python map/cluster.py --algo kmeans --k 20
+    venv/bin/python map/cluster.py --algo kmeans --k 28      # CHỐT: k=28 + naming log-odds
 """
 from __future__ import annotations
 
@@ -19,29 +19,49 @@ import pandas as pd
 import _common as C
 
 
-def name_clusters(base: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
-    """Đặt tên mỗi cụm theo genre+theme ĐẶC TRƯNG (lift = tần suất trong cụm / toàn cục), thay vì
-    top-1 genre (genre rộng như Action/Comedy có mặt khắp nơi -> vô nghĩa). Tên = 2 tag lift cao
-    nhất (xuất hiện ở >=15% cụm). Trả [label, name, size, examples] (examples = 3 title phổ biến)."""
+def _logodds_names(base: pd.DataFrame, labels: np.ndarray,
+                   a0: float = 100.0, min_support: float = 0.05, min_count: int = 3) -> dict:
+    """Tên cụm = 2 tag genre+theme ĐẶC TRƯNG nhất theo LOG-ODDS-RATIO + prior Dirichlet (Monroe 2008
+    'fightin words'): z = Δlog-odds / sqrt(var) — phân biệt cụm này với phần còn lại, kiểm soát base-rate
+    + phương sai (tag hiếm không bị thổi phồng). Sạch/ít lặp hơn lift & tf-idf (đã so ở docs khảo sát map)."""
     n_total = len(base)
     themes = base["themes_list"] if "themes_list" in base.columns else [[]] * n_total
     tagsets = [set(g) | set(t) for g, t in zip(base["genres_list"], themes)]
-    global_df = Counter(t for s in tagsets for t in s)            # doc-freq toàn cục mỗi tag
+    gc = Counter(t for s in tagsets for t in s)
+    total = sum(gc.values())
+    aw = {t: gc[t] / total * a0 for t in gc}                       # prior tỉ lệ tần suất nền
+    out = {}
+    for lab in sorted(set(labels.tolist()) - {-1}):
+        idx = np.where(labels == lab)[0]
+        n_cl = len(idx)
+        yi = Counter(t for i in idx for t in tagsets[i])
+        ni = sum(yi.values())
+        n_rest = total - ni
+        scored = []
+        for t, c in yi.items():
+            if c < min_count or c / n_cl < min_support:
+                continue
+            yiw, yrw = yi[t], gc[t] - yi[t]
+            term_i = np.log(yiw + aw[t]) - np.log(ni + a0 - yiw - aw[t])
+            term_r = np.log(yrw + aw[t]) - np.log(n_rest + a0 - yrw - aw[t])
+            var = 1.0 / (yiw + aw[t]) + 1.0 / (yrw + aw[t])
+            scored.append(((term_i - term_r) / np.sqrt(var), t))
+        scored.sort(reverse=True)
+        out[lab] = "·".join(t for _, t in scored[:2]) if scored \
+            else base.iloc[idx]["primary_genre"].mode().iloc[0]
+    return out
 
-    b = base.assign(_label=labels, _tags=tagsets)
+
+def name_clusters(base: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
+    """Đặt tên mỗi cụm bằng log-odds-ratio (xem `_logodds_names`). Trả [label, name, size, examples]
+    (examples = 3 title phổ biến nhất — sẵn cho hover/tooltip frontend)."""
+    names = _logodds_names(base, labels)
+    b = base.assign(_label=labels)
     rows = []
     for lab, grp in b.groupby("_label"):
-        n = len(grp)
-        if lab == -1:
-            name = "noise"
-        else:
-            cc = Counter(t for s in grp["_tags"] for t in s)
-            scored = sorted(((cc[t] / n) / (global_df[t] / n_total), cc[t] / n, t)
-                            for t in cc if cc[t] / n >= 0.15)       # lift, support>=15%
-            name = "·".join(t for _, _, t in scored[-2:][::-1]) if scored \
-                else grp["primary_genre"].mode().iloc[0]
+        name = "noise" if lab == -1 else names.get(lab, "?")
         ex = " · ".join(grp.sort_values("popularity")["title"].head(3).astype(str).tolist())
-        rows.append({"label": int(lab), "name": name, "size": int(n), "examples": ex})
+        rows.append({"label": int(lab), "name": name, "size": int(len(grp)), "examples": ex})
 
     df = pd.DataFrame(rows).sort_values("size", ascending=False).reset_index(drop=True)
     seen: dict[str, int] = {}                                      # khử trùng tên (cùng top-2 tag)
@@ -57,7 +77,7 @@ def name_clusters(base: pd.DataFrame, labels: np.ndarray) -> pd.DataFrame:
 def main() -> None:
     ap = argparse.ArgumentParser(description="Cluster item vectors trong 128-d")
     ap.add_argument("--algo", choices=["hdbscan", "kmeans"], required=True)
-    ap.add_argument("--k", type=int, default=20, help="số cụm (kmeans)")
+    ap.add_argument("--k", type=int, default=28, help="số cụm (kmeans) — CHỐT k=28 cho map territory")
     ap.add_argument("--min-cluster-size", type=int, default=150, help="hdbscan")
     ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
