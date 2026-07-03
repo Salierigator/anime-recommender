@@ -67,6 +67,39 @@ def add_overlays(fig, names: list[str]):
                 marker=dict(size=size, symbol=sym, color=col, line=dict(width=1, color="white"))))
 
 
+def kde_dominant(x, y, labels, uniq, bins: int = 480, sigma: float = 6.0, pad: float = 0.5):
+    """Trường KDE theo cụm trên grid chung -> (ex, ey, total, dom): biên bins x/y, tổng mật độ,
+    index cụm áp đảo mỗi cell. Dùng chung render_territory + map/export_service.py (nền web).
+    Đổi bins nhớ scale sigma cùng tỉ lệ (sigma tính theo CELL) để giữ nguyên bandwidth vật lý."""
+    import numpy as np
+    from scipy.ndimage import gaussian_filter
+
+    ex = np.linspace(x.min() - pad, x.max() + pad, bins + 1)
+    ey = np.linspace(y.min() - pad, y.max() + pad, bins + 1)
+    stack = np.zeros((len(uniq), bins, bins))
+    for i, c in enumerate(uniq):
+        m = labels == c
+        H, _, _ = np.histogram2d(x[m], y[m], bins=[ex, ey])
+        stack[i] = gaussian_filter(H.T, sigma)
+    return ex, ey, stack.sum(0), stack.argmax(0)
+
+
+def territory_rgba(uniq, total, dom):
+    """RGBA [bins,bins,4] phần FILL của kde_boundary: cell tô màu cụm áp đảo (palette
+    tab20+tab20b cố định theo label) + alpha theo mật độ (norm percentile-99)."""
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    pal = np.array(list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors))[:, :3]
+    img = np.zeros((*dom.shape, 4))
+    for i in range(len(uniq)):
+        img[dom == i, :3] = pal[uniq[i] % len(pal)]
+    img[..., 3] = np.clip(total / np.percentile(total[total > 0], 99), 0, 1) ** 0.5 * 0.7
+    return img
+
+
 def render_territory(df: pd.DataFrame, out_path, label_top: int = 20,
                      bins: int = 480, sigma: float = 6.0):
     """CHỐT: bản đồ 'territory' kde_boundary (matplotlib PNG tĩnh) — mỗi cell tô theo cụm ÁP ĐẢO (KDE
@@ -76,24 +109,11 @@ def render_territory(df: pd.DataFrame, out_path, label_top: int = 20,
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from scipy.ndimage import gaussian_filter
 
-    pal = np.array(list(plt.get_cmap("tab20").colors) + list(plt.get_cmap("tab20b").colors))[:, :3]
     x, y, labels = df["x"].to_numpy(), df["y"].to_numpy(), df["label"].to_numpy()
     uniq = sorted(set(labels.tolist()) - {-1})
-    pad = 0.5
-    ex = np.linspace(x.min() - pad, x.max() + pad, bins + 1)
-    ey = np.linspace(y.min() - pad, y.max() + pad, bins + 1)
-    stack = np.zeros((len(uniq), bins, bins))
-    for i, c in enumerate(uniq):
-        m = labels == c
-        H, _, _ = np.histogram2d(x[m], y[m], bins=[ex, ey])
-        stack[i] = gaussian_filter(H.T, sigma)
-    total, dom = stack.sum(0), stack.argmax(0)
-    img = np.zeros((bins, bins, 4))
-    for i in range(len(uniq)):
-        img[dom == i, :3] = pal[uniq[i] % len(pal)]
-    img[..., 3] = np.clip(total / np.percentile(total[total > 0], 99), 0, 1) ** 0.5 * 0.7
+    ex, ey, total, dom = kde_dominant(x, y, labels, uniq, bins=bins, sigma=sigma)
+    img = territory_rgba(uniq, total, dom)
 
     cx, cy = 0.5 * (ex[:-1] + ex[1:]), 0.5 * (ey[:-1] + ey[1:])
     Xg, Yg = np.meshgrid(cx, cy)

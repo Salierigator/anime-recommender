@@ -411,6 +411,10 @@
     "alpha": 1.0,
     "k_retrieve": 200,
     "mode": "mock",
-    "total_entries": 248
+    "total_entries": 248,
+    "map_xy": [
+      -0.4624,
+      -0.8635
+    ]
   }
 }

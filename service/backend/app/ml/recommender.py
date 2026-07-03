@@ -132,11 +132,15 @@ class Recommender:
                 "age": np.nan, "split": "-", "source": "mal_ids"}
 
     # ---- end-to-end ----
+    def encode_U(self, user: dict) -> torch.Tensor:
+        """U [1,128] từ user dict — dùng chung recommend() + map 'you are here' (AnimeMap.locate)."""
+        return encode_users(self.enc, [user["hist_idx"]], [user["hist_score"]],
+                            np.asarray([user["gender_id"]]), np.asarray([user["joined_bucket"]]),
+                            self.cap)
+
     def recommend(self, user: dict, top_k: int = 20, cold_k: int = 10,
                   anchor_mal_id: int | None = None, sfw: bool = True) -> dict:
-        U = encode_users(self.enc, [user["hist_idx"]], [user["hist_score"]],
-                         np.asarray([user["gender_id"]]), np.asarray([user["joined_bucket"]]),
-                         self.cap)
+        U = self.encode_U(user)
         # SFW: union item hentai vào mask → rớt khỏi cả pool warm lẫn cold trước khi rank
         block = np.union1d(user["seen"], self.nsfw_idx) if sfw else user["seen"]
         # serve có thể lấy pool sâu hơn k_retrieve (feature item bất biến theo depth: pool_rank

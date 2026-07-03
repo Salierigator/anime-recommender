@@ -47,6 +47,7 @@ class RecommendMeta(BaseModel):
     alpha: Optional[float] = None      # blend α của ranker
     k_retrieve: Optional[int] = None
     mode: str                          # mock | live
+    map_xy: Optional[List[float]] = None  # [x,y] "you are here" trên GET /api/map (None = map tắt)
 
 
 class RecommendResponse(BaseModel):

@@ -16,9 +16,14 @@ Sau khảo sát nhiều phương án (harness `explore_viz.py` + `explore_viz_v2
   trưng nhất, ít lặp/nhòe hơn lift & tf-idf. Cột `examples` (3 phim phổ biến/cụm) sẵn cho hover frontend.
 - **Render:** **kde_boundary** = `viz.py --style territory` (tô theo cụm áp đảo + đường biên trắng). hexbin
   đẹp nhưng **thiếu ý nghĩa** → loại. Điểm rời + hover + you-are-here vẫn ở `--style points` (Plotly HTML).
+- **Serving (2026-07-03):** `export_service.py` → **`artifacts/map/`** (points/clusters/encoder-npz/
+  territory nền/meta — CONTRACT riêng tự sinh trong đó) → web serve `GET /api/map` + you-are-here
+  **không cần TF** (weights encoder trích qua h5py, forward numpy ≡ keras verified 0 diff — `service/CLAUDE.md §5`).
 
 ## Firewall
-- Chỉ ĐỌC `artifacts/` + `cleaned-data/details.csv` (sạch). Không sửa `artifacts/`.
+- Chỉ ĐỌC `artifacts/` + `cleaned-data/details.csv` (sạch). Không sửa `artifacts/` — **ngoại lệ duy
+  nhất**: `export_service.py` GHI vào đúng namespace `artifacts/map/` (export cho service; schema +
+  sync rule ở `artifacts/map/CONTRACT.md` tự sinh).
 - Tái dùng ranker user-encoder (`ranker/src/{pool,user_encode,features}`) để encode user — **không**
   load `best.pt`, **không** import `retriever/src`, **không** đụng `train-data/`.
 - Output ghi `map/outputs/` (gitignored).
@@ -31,8 +36,8 @@ nên cả `import umap` cũng deadlock. ⇒ **bước projection + encode_user c
 Phân công:
 | Chạy ở đâu | Script |
 |---|---|
-| **Local** (pandas/sklearn/plotly, không cần TF/umap) | `build_base.py`, `cluster.py`, `viz.py` (render từ coords Colab tải về) |
-| **Colab** (`run_colab.ipynb`, TF) | `project.py` (fit pumap), `encode_user.py` (load reducer + transform) |
+| **Local** (pandas/sklearn/plotly/h5py, không cần TF/umap) | `build_base.py`, `cluster.py`, `viz.py` (render từ coords Colab tải về), `export_service.py` (→ `artifacts/map/`) |
+| **Colab** (`run_colab.ipynb`, TF) | `project.py` (fit pumap), `encode_user.py` (load reducer + transform — chỉ còn cho khảo sát offline; serving đã có đường numpy) |
 
 Deps: `scikit-learn` + `plotly` đã pin ở `requirements.txt` (local). `umap-learn` + `tensorflow`
 = **Colab-only**, notebook tự `pip install umap-learn` (đừng cài local — sẽ deadlock).
@@ -51,12 +56,15 @@ python map/cluster.py --algo kmeans --k 28                # CHỐT: k=28, cluste
 python map/viz.py --method pumap2d --cluster kmeans --style territory --suffix demo   # CHỐT: bản đồ territory PNG
 python map/viz.py --method pumap2d --color cluster --cluster kmeans \
     --overlay overlay_user_me                             # HTML tương tác + you-are-here (tuỳ chọn)
+python map/export_service.py                              # → artifacts/map/ cho web (GET /api/map)
 ```
 
 ## Pipeline
 `build_base` (vector+metadata) → `project` (pumap2d → coords + reducer) → `cluster` (128-d → nhãn +
-tên cụm) → `encode_user` (user point + top-K neighbor) → `viz` (HTML 2D). Cluster làm ở **128-d**,
-tô màu chéo lên projection — KHÔNG cluster trên tọa độ 2D.
+tên cụm) → `encode_user` (user point + top-K neighbor) → `viz` (HTML 2D) → `export_service`
+(→ `artifacts/map/` cho web). Cluster làm ở **128-d**, tô màu chéo lên projection — KHÔNG cluster
+trên tọa độ 2D. ⚠ Vectors đổi (retriever re-export) ⇒ chạy lại CẢ chuỗi; service tự phát hiện lệch
+(sha `item_vectors` trong map_meta.json) và tắt map cho tới khi export lại.
 
 ## Nhật ký findings (không gian xếp theo KHÁN GIẢ, không theo genre)
 Đo trên 128-d giải thích vì sao map "lùm nhùm": không gian two-tower xếp theo **khán giả (co-watch)**,
@@ -75,4 +83,7 @@ không theo nhãn genre:
 
 Demographic (shounen/seinen…) bị loại làm trục màu chính: 71% rỗng.
 
-TODO: Phase 2 — export base map (JSON/binary) cho frontend WebGL + API "you are here".
+~~TODO: Phase 2 — export base map (JSON/binary) cho frontend WebGL + API "you are here".~~ **XONG
+2026-07-03**: `export_service.py` + `GET /api/map` + `meta.map_xy` trong `/api/recommend` (shape:
+`service/API_CONTRACT.md`). TODO còn lại: **frontend view map** (scatter WebGL + territory.png nền +
+LOD theo `popularity` + marker user).

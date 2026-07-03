@@ -15,5 +15,6 @@ pytest
 sentence-transformers   # offline synopsis embedding (retriever/data_prep/07_synopsis_emb.py)
 scikit-learn            # map/cluster.py (KMeans 128-d)
 plotly                  # map/viz.py (render HTML 2D local)
+h5py                    # map/export_service.py (trích weights encoder.keras -> npz, serve khỏi cần TF)
 # map/ pumap (umap-learn + tensorflow) = COLAB-ONLY — KHÔNG cài local (TF abort py3.9/macOS26;
 # umap eager-import parametric_umap -> TF nên deadlock). run_colab.ipynb tự pip install umap-learn.

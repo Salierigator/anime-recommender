@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.router import api_router
 from app.config import get_settings
@@ -36,6 +37,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(GZipMiddleware, minimum_size=1024)   # GET /api/map ~1.3MB -> ~350KB
+
     app.include_router(api_router, prefix="/api")
     return app
 
