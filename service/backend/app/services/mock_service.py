@@ -48,7 +48,7 @@ class MockService(RecommenderService):
         return self._map_bytes
 
     def territory_path(self) -> Optional[Path]:
-        # mock không có asset riêng — dùng luôn artifacts/map/ nếu repo này đã export (dev
-        # frontend clone không có artifacts -> 404, points sample vẫn đủ dựng UI)
-        p = ROOT / "artifacts" / "map" / "territory.png"
+        # mock không có asset riêng — dùng luôn map/outputs/service/ nếu repo này đã export (dev
+        # frontend clone không có export -> 404, points sample vẫn đủ dựng UI)
+        p = ROOT / "map" / "outputs" / "service" / "territory.png"
         return p if p.exists() else None

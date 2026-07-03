@@ -8,7 +8,7 @@ mal_ids   → user_from_mal_ids (path test, không cần MAL API).
   - mal_api import BÊN TRONG _fetch_live → module nạp MAL_CLIENT_ID lúc import (mal_api.py),
     chỉ cần khi thật sự crawl live; mal_ids vẫn chạy được khi thiếu client id.
 
-Map (GET /api/map + meta.map_xy): AnimeMap load kèm — thiếu/lệch artifacts/map chỉ TẮT map
+Map (GET /api/map + meta.map_xy): AnimeMap load kèm — thiếu/lệch map/outputs/service chỉ TẮT map
 (degrade, log ⚠), KHÔNG chặn recommend.
 """
 from __future__ import annotations
@@ -76,7 +76,7 @@ class RealService(RecommenderService):
     def map_payload(self) -> bytes:
         if self.map is None:
             raise HTTPException(status_code=503,
-                                detail="map artifacts thiếu/lệch — xem log backend "
+                                detail="map export thiếu/lệch — xem log backend "
                                        "(chạy map/export_service.py)")
         return self.map.payload_bytes
 

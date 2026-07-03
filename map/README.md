@@ -16,17 +16,18 @@ Sau khảo sát nhiều phương án (harness `explore_viz.py` + `explore_viz_v2
   trưng nhất, ít lặp/nhòe hơn lift & tf-idf. Cột `examples` (3 phim phổ biến/cụm) sẵn cho hover frontend.
 - **Render:** **kde_boundary** = `viz.py --style territory` (tô theo cụm áp đảo + đường biên trắng). hexbin
   đẹp nhưng **thiếu ý nghĩa** → loại. Điểm rời + hover + you-are-here vẫn ở `--style points` (Plotly HTML).
-- **Serving (2026-07-03):** `export_service.py` → **`artifacts/map/`** (points/clusters/encoder-npz/
+- **Serving (2026-07-03):** `export_service.py` → **`map/outputs/service/`** (points/clusters/encoder-npz/
   territory nền/meta — CONTRACT riêng tự sinh trong đó) → web serve `GET /api/map` + you-are-here
   **không cần TF** (weights encoder trích qua h5py, forward numpy ≡ keras verified 0 diff — `service/CLAUDE.md §5`).
 
 ## Firewall
-- Chỉ ĐỌC `artifacts/` + `cleaned-data/details.csv` (sạch). Không sửa `artifacts/` — **ngoại lệ duy
-  nhất**: `export_service.py` GHI vào đúng namespace `artifacts/map/` (export cho service; schema +
-  sync rule ở `artifacts/map/CONTRACT.md` tự sinh).
+- Chỉ ĐỌC `artifacts/` + `cleaned-data/details.csv` (sạch). **KHÔNG ghi `artifacts/`** (folder đó
+  thuần retriever/ranker/service).
 - Tái dùng ranker user-encoder (`ranker/src/{pool,user_encode,features}`) để encode user — **không**
   load `best.pt`, **không** import `retriever/src`, **không** đụng `train-data/`.
-- Output ghi `map/outputs/` (gitignored).
+- Output ghi `map/outputs/` (gitignored). Riêng **`map/outputs/service/`** = export cho web
+  (`export_service.py` sinh; service ĐỌC folder này — schema + sync rule ở
+  `map/outputs/service/CONTRACT.md` tự sinh).
 
 ## pumap CHẠY TRÊN COLAB (không phải local)
 pumap cần **TensorFlow**. Venv local = **Python 3.9.6 / macOS 26.3.1 arm64** → `import tensorflow`
@@ -36,7 +37,7 @@ nên cả `import umap` cũng deadlock. ⇒ **bước projection + encode_user c
 Phân công:
 | Chạy ở đâu | Script |
 |---|---|
-| **Local** (pandas/sklearn/plotly/h5py, không cần TF/umap) | `build_base.py`, `cluster.py`, `viz.py` (render từ coords Colab tải về), `export_service.py` (→ `artifacts/map/`) |
+| **Local** (pandas/sklearn/plotly/h5py, không cần TF/umap) | `build_base.py`, `cluster.py`, `viz.py` (render từ coords Colab tải về), `export_service.py` (→ `map/outputs/service/`) |
 | **Colab** (`run_colab.ipynb`, TF) | `project.py` (fit pumap), `encode_user.py` (load reducer + transform — chỉ còn cho khảo sát offline; serving đã có đường numpy) |
 
 Deps: `scikit-learn` + `plotly` đã pin ở `requirements.txt` (local). `umap-learn` + `tensorflow`
@@ -56,13 +57,13 @@ python map/cluster.py --algo kmeans --k 28                # CHỐT: k=28, cluste
 python map/viz.py --method pumap2d --cluster kmeans --style territory --suffix demo   # CHỐT: bản đồ territory PNG
 python map/viz.py --method pumap2d --color cluster --cluster kmeans \
     --overlay overlay_user_me                             # HTML tương tác + you-are-here (tuỳ chọn)
-python map/export_service.py                              # → artifacts/map/ cho web (GET /api/map)
+python map/export_service.py                              # → map/outputs/service/ cho web (GET /api/map)
 ```
 
 ## Pipeline
 `build_base` (vector+metadata) → `project` (pumap2d → coords + reducer) → `cluster` (128-d → nhãn +
 tên cụm) → `encode_user` (user point + top-K neighbor) → `viz` (HTML 2D) → `export_service`
-(→ `artifacts/map/` cho web). Cluster làm ở **128-d**, tô màu chéo lên projection — KHÔNG cluster
+(→ `map/outputs/service/` cho web). Cluster làm ở **128-d**, tô màu chéo lên projection — KHÔNG cluster
 trên tọa độ 2D. ⚠ Vectors đổi (retriever re-export) ⇒ chạy lại CẢ chuỗi; service tự phát hiện lệch
 (sha `item_vectors` trong map_meta.json) và tắt map cho tới khi export lại.
 

@@ -51,7 +51,7 @@ def test_map_mock_shape():
 
 
 def test_map_territory_route_wired():
-    # mock mượn artifacts/map/territory.png nếu repo đã export; clone frontend-only -> 404.
+    # mock mượn map/outputs/service/territory.png nếu repo đã export; clone frontend-only -> 404.
     with TestClient(app) as client:
         r = client.get("/api/map/territory.png")
     assert r.status_code in (200, 404)

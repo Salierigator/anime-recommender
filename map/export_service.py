@@ -1,7 +1,7 @@
 """export_service.py — export map artifacts cho service (CLI, chạy LOCAL, không cần TF).
 
 Đọc map/outputs/ (đã chạy đủ: build_base → project pumap2d (Colab) → cluster kmeans k=28)
--> ghi `artifacts/map/` (điểm GHI duy nhất của map/ vào artifacts — xem CONTRACT.md sinh kèm):
+-> ghi `map/outputs/service/` (export cho web — service ĐỌC folder này; xem CONTRACT.md sinh kèm):
   map_points.parquet   mal_id/title/x/y/label/popularity/is_cold — 21k điểm SFW cho GET /api/map
   map_clusters.parquet label/name/size/examples/cx/cy — 28 cụm (nhãn + hover)
   pumap_encoder.npz    weights encoder ParametricUMAP (MLP 128→100→100→100→2 relu) trích từ
@@ -29,7 +29,7 @@ import pandas as pd
 import _common as C
 import viz
 
-MAP_DIR = C.ARTIFACTS / "map"
+MAP_DIR = C.OUTPUTS / "service"
 TERR_BINS, TERR_SIGMA = 960, 12.0     # = look chốt 480/6.0 (viz.render_territory) scale 2× pixel
 
 
@@ -101,7 +101,7 @@ def main() -> None:
     layers = extract_encoder_weights()
     diff = np.abs(forward(layers, vectors) - coords[["x", "y"]].to_numpy())
     print(f"verify encoder: max|forward - coords| = {diff.max():.2e} (mean {diff.mean():.2e})")
-    assert diff.max() < 1e-3, "forward numpy lệch coords — trích weights sai, KHÔNG ghi artifacts"
+    assert diff.max() < 1e-3, "forward numpy lệch coords — trích weights sai, KHÔNG ghi export"
 
     MAP_DIR.mkdir(parents=True, exist_ok=True)
     np.savez(MAP_DIR / "pumap_encoder.npz",
@@ -140,19 +140,18 @@ def main() -> None:
     }
     (MAP_DIR / "map_meta.json").write_text(json.dumps(meta, indent=2))
 
-    (MAP_DIR / "CONTRACT.md").write_text(f"""# artifacts/map/ — CONTRACT
+    (MAP_DIR / "CONTRACT.md").write_text(f"""# map/outputs/service/ — CONTRACT
 
 Tự sinh bởi `map/export_service.py` — không sửa tay; re-run export để cập nhật.
-**Ngoại lệ firewall duy nhất của map/**: map chỉ được GHI vào ĐÚNG namespace `artifacts/map/`
-này (phần còn lại của `artifacts/` vẫn do retriever ghi). Consumer: service
-(`app/ml/anime_map.py` → `GET /api/map`) — chỉ ĐỌC.
+Đây là output của map/ dành cho web (`artifacts/` thuần retriever/ranker/service, map KHÔNG
+đụng). Consumer: service (`app/ml/anime_map.py` → `GET /api/map`) — chỉ ĐỌC folder này.
 
 - Generated: {meta['generated']}
 - Nguồn: `map/outputs/` (pipeline: build_base → project pumap2d n50/d0.8 (Colab) → cluster
   kmeans k={meta['k']} + naming log-odds → export_service). Chốt hiển thị: `map/README.md`.
-- `item_vectors.npy` sha256: `{sha[:16]}…` (đầy đủ trong map_meta.json). Service so khớp lúc
-  load — LỆCH nghĩa là retriever đã re-export mà map chưa re-fit → service TẮT map (degrade),
-  recommend vẫn chạy bình thường.
+- `artifacts/item_vectors.npy` sha256: `{sha[:16]}…` (đầy đủ trong map_meta.json). Service so
+  khớp lúc load — LỆCH nghĩa là retriever đã re-export mà map chưa re-fit → service TẮT map
+  (degrade), recommend vẫn chạy bình thường.
 
 ## Files
 

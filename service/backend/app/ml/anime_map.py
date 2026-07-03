@@ -1,8 +1,8 @@
 """anime_map.py — bản đồ anime cho web: payload tĩnh + đặt user lên map ("you are here").
 
 numpy/pandas-only, KHÔNG kéo torch/TF/lightgbm — độc lập với recommender.py (không dính bẫy
-import-order). Đọc `artifacts/map/` do `map/export_service.py` sinh (schema + sync rule:
-`artifacts/map/CONTRACT.md`). Encoder pumap = forward MLP từ pumap_encoder.npz (đã verify
+import-order). Đọc `map/outputs/service/` do `map/export_service.py` sinh (schema + sync rule:
+`map/outputs/service/CONTRACT.md`). Encoder pumap = forward MLP từ pumap_encoder.npz (đã verify
 ≡ encoder.keras từng bit) → transform user vector U 128-d sang toạ độ map, không cần TF.
 
 Fingerprint: sha256(item_vectors.npy) phải khớp lúc export — LỆCH = retriever re-export mà map
@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[4]                 # anime recommender/
-MAP_DIR = ROOT / "artifacts" / "map"
+MAP_DIR = ROOT / "map" / "outputs" / "service"
 
 
 class MapOutOfSync(RuntimeError):
@@ -26,15 +26,15 @@ class MapOutOfSync(RuntimeError):
 
 
 class AnimeMap:
-    """Load artifacts/map 1 lần: payload GET /api/map cache sẵn (bytes) + locate(U) -> [x,y]."""
+    """Load map/outputs/service 1 lần: payload GET /api/map cache sẵn (bytes) + locate(U) -> [x,y]."""
 
     def __init__(self):
         self.meta = json.loads((MAP_DIR / "map_meta.json").read_text())
         sha = hashlib.sha256((ROOT / "artifacts" / "item_vectors.npy").read_bytes()).hexdigest()
         if sha != self.meta["item_vectors_sha256"]:
             raise MapOutOfSync(
-                "artifacts/map/ lệch item_vectors.npy — chạy lại pipeline map: build_base "
-                "→ project (Colab) → cluster --k 28 → export_service (artifacts/map/CONTRACT.md)")
+                "map/outputs/service/ lệch item_vectors.npy — chạy lại pipeline map: build_base "
+                "→ project (Colab) → cluster --k 28 → export_service (map/outputs/service/CONTRACT.md)")
 
         z = np.load(MAP_DIR / "pumap_encoder.npz")
         self._layers = [(z[f"W{i}"], z[f"b{i}"]) for i in range(4)]

@@ -1,6 +1,6 @@
 """GET /api/map + /api/map/territory.png — bản đồ anime (points/clusters/meta + nền PNG).
 
-Payload tĩnh per-deploy: service serialize sẵn bytes (mock đọc fixture, real đọc artifacts/map
+Payload tĩnh per-deploy: service serialize sẵn bytes (mock đọc fixture, real đọc map/outputs/service
 qua AnimeMap) — trả thẳng, không qua pydantic (21k điểm, khỏi re-validate mỗi request).
 Shape: service/API_CONTRACT.md. "You are here" KHÔNG ở đây — nằm ở meta.map_xy của /api/recommend.
 """
