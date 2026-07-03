@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { RecommendRequest, RecommendResponse } from './types';
+import type { RecommendRequest, RecommendResponse, MapResponse } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -26,3 +26,16 @@ export const fetchPostersAPI = async (ids: number[]): Promise<Record<number, str
   
   return numberKeyedPosters;
 };
+
+let cachedMapData: MapResponse | null = null;
+
+export const fetchMapAPI = async (): Promise<MapResponse> => {
+  if (cachedMapData) {
+    return cachedMapData;
+  }
+  const response = await api.get<MapResponse>('/api/map');
+  cachedMapData = response.data;
+  return response.data;
+};
+
+export { API_URL };

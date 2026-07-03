@@ -2,8 +2,10 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { SearchForm } from './components/SearchForm';
 import { AnimeCard } from './components/AnimeCard';
 import { AnimeModal } from './components/AnimeModal';
-import { recommendAPI, fetchPostersAPI } from './api';
-import type { AnimeItem, RecommendResponse } from './types';
+import { MapPreview } from './components/MapPreview';
+import { MapExplorer } from './components/MapExplorer';
+import { recommendAPI, fetchPostersAPI, fetchMapAPI } from './api';
+import type { AnimeItem, RecommendResponse, MapResponse } from './types';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
@@ -28,6 +30,8 @@ function App() {
   const requestedIdsRef = useRef<Set<number>>(new Set());
   
   const [selectedMalId, setSelectedMalId] = useState<number | null>(null);
+  const [mapData, setMapData] = useState<MapResponse | null>(null);
+  const [isMapOpen, setIsMapOpen] = useState(false);
 
   const handleSearch = async (username: string) => {
     setIsLoading(true);
@@ -205,6 +209,22 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedMain, displayedCold, pool]);
 
+  // Lazy fetch map data when pool becomes available
+  useEffect(() => {
+    if (pool && !mapData) {
+      fetchMapAPI()
+        .then((data) => setMapData(data))
+        .catch((err) => {
+          // 503 map tắt phía server -> KHÔNG render dải preview, không lỗi console đỏ
+          if (err.response?.status === 503) {
+            console.log('Map feature is currently disabled on the server (503).');
+          } else {
+            console.warn('Failed to load map data:', err);
+          }
+        });
+    }
+  }, [pool, mapData]);
+
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-gray-200">
       <header className="py-12 px-4 border-b border-gray-100">
@@ -262,6 +282,15 @@ function App() {
             <div className="text-center text-sm text-gray-400">
               <p>Based on {pool.meta.total_entries} entries from your list</p>
             </div>
+
+            {/* Your Taste Map Preview Banner */}
+            {mapData && (
+              <MapPreview
+                mapData={mapData}
+                mapXy={pool.meta.map_xy ?? null}
+                onClick={() => setIsMapOpen(true)}
+              />
+            )}
 
             {/* Main Recommendations */}
             <section>
@@ -333,6 +362,18 @@ function App() {
           isOpen={!!selectedMalId} 
           onClose={() => setSelectedMalId(null)} 
         />
+
+        {mapData && (
+          <MapExplorer
+            isOpen={isMapOpen}
+            onClose={() => setIsMapOpen(false)}
+            mapData={mapData}
+            mapXy={pool?.meta.map_xy ?? null}
+            mainRecs={pool?.main ?? []}
+            coldRecs={pool?.cold ?? []}
+            onSelectAnime={(malId) => setSelectedMalId(malId)}
+          />
+        )}
       </main>
     </div>
   );
