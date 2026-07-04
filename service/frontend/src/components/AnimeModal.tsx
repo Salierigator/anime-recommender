@@ -1,5 +1,5 @@
-/* eslint-disable react-hooks/set-state-in-effect, @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { fetchAnimeDetail } from '../utils/jikanQueue';
 
@@ -79,17 +79,17 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
 
   const studios = data?.studios?.map((s: any) => s.name).join(', ');
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity"
       onClick={handleOverlayClick}
     >
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-200">
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-none shadow-2xl overflow-hidden flex flex-col md:flex-row animate-in fade-in zoom-in-95 duration-200 border border-gray-200">
 
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 z-10 p-2 bg-white/80 hover:bg-white text-gray-700 rounded-full shadow-sm transition-colors"
+          className="absolute top-4 right-4 z-10 p-2 bg-white/80 hover:bg-white text-gray-700 rounded-none border border-gray-200 shadow-sm transition-colors cursor-pointer"
           aria-label="Close modal"
         >
           <X className="w-5 h-5" />
@@ -97,29 +97,43 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
 
         {isLoading && (
           <div className="w-full h-96 flex flex-col items-center justify-center text-gray-500">
-            <div className="h-8 w-8 rounded-full border-4 border-gray-200 border-t-gray-600 animate-spin mb-4"></div>
+            <div className="h-8 w-8 rounded-none border-4 border-gray-100 border-t-gray-900 animate-spin mb-4"></div>
             <p className="font-medium">Loading details...</p>
           </div>
         )}
 
         {error && !isLoading && (
-          <div className="w-full h-96 flex flex-col items-center justify-center text-gray-500 space-y-4">
-            <AlertCircle className="w-12 h-12 text-red-400" />
-            <p className="font-medium text-lg">Failed to load details</p>
-            <button
-              onClick={() => {
-                setIsLoading(true);
-                setError(false);
-                fetchAnimeDetail(malId!).then(res => {
-                  if (res) setData(res);
-                  else setError(true);
-                  setIsLoading(false);
-                });
-              }}
-              className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800 transition-colors text-sm"
-            >
-              Retry
-            </button>
+          <div className="w-full h-96 flex flex-col items-center justify-center text-gray-500 p-6 space-y-4">
+            <AlertCircle className="w-10 h-10 text-red-600" />
+            <p className="font-semibold text-gray-900 text-lg">Failed to load details</p>
+            <p className="text-xs text-gray-500 text-center max-w-sm">
+              We couldn't retrieve the anime details. You might be rate-limited or the anime is unavailable.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setIsLoading(true);
+                  setError(false);
+                  fetchAnimeDetail(malId!).then(res => {
+                    if (res) setData(res);
+                    else setError(true);
+                    setIsLoading(false);
+                  });
+                }}
+                className="px-4 py-2 border border-gray-200 text-gray-900 hover:bg-gray-50 transition-colors text-xs font-semibold cursor-pointer rounded-none"
+              >
+                Retry
+              </button>
+              <a
+                href={`https://myanimelist.net/anime/${malId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-gray-900 text-white text-xs font-semibold hover:bg-gray-800 transition-colors cursor-pointer rounded-none"
+              >
+                View on MAL
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
           </div>
         )}
 
@@ -187,8 +201,8 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
 
               {/* Scrollable Body */}
               <div className="p-6 overflow-y-auto flex-1 min-h-0">
-                {/* Meta Info */}
-                <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded-lg border border-gray-100">
+                 {/* Meta Info */}
+                <div className="flex flex-wrap items-center gap-y-2 gap-x-4 text-sm text-gray-700 mb-6 bg-gray-50 p-3 rounded-none border border-gray-100">
                   {data.type && <div><span className="font-medium text-gray-500 mr-1">Type:</span> {data.type}</div>}
                   {year && <div><span className="font-medium text-gray-500 mr-1">Year:</span> {year}</div>}
                   {data.episodes && <div><span className="font-medium text-gray-500 mr-1">Episodes:</span> {data.episodes}</div>}
@@ -200,7 +214,7 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-6">
                     {tags.map((tag, idx) => (
-                      <span key={idx} className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-full border border-gray-200">
+                      <span key={idx} className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-sm border border-gray-200">
                         {tag}
                       </span>
                     ))}
@@ -224,7 +238,7 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
                   href={`https://myanimelist.net/anime/${malId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors shadow-sm"
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-none hover:bg-gray-800 transition-colors shadow-sm cursor-pointer"
                 >
                   View on MAL
                   <ExternalLink className="w-4 h-4" />
@@ -234,6 +248,7 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

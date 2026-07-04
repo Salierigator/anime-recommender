@@ -372,6 +372,7 @@ function App() {
             mainRecs={pool?.main ?? []}
             coldRecs={pool?.cold ?? []}
             onSelectAnime={(malId) => setSelectedMalId(malId)}
+            isDetailOpen={!!selectedMalId}
           />
         )}
       </main>

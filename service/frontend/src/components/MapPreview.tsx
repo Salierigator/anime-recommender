@@ -71,40 +71,31 @@ export function MapPreview({ mapData, mapXy, onClick }: MapPreviewProps) {
       ctx.resetTransform();
       ctx.scale(dpr, dpr);
 
-      // 1. Calculate Viewport Bounds
+      // 1. Calculate Center and Uniform Scale
       const [x0, x1, y0, y1] = meta.extent;
-      let visible_x0 = x0;
-      let visible_x1 = x1;
-      let visible_y0 = y0;
-      let visible_y1 = y1;
+      const centerX = mapXy ? mapXy[0] : (x0 + x1) / 2;
+      const centerY = mapXy ? mapXy[1] : (y0 + y1) / 2;
 
-      if (mapXy !== null) {
-        // Zoomed view: centered on mapXy showing 1/4th of the extent size
-        const ex_w = x1 - x0;
-        const ex_h = y1 - y0;
-        const zoomWidth = ex_w / 4;
-        const zoomHeight = ex_h / 4;
+      const viewH = (y1 - y0) / 3;
+      const scale = height / viewH;
+      const viewW = width / scale;
 
-        visible_x0 = mapXy[0] - zoomWidth / 2;
-        visible_x1 = mapXy[0] + zoomWidth / 2;
-        visible_y0 = mapXy[1] - zoomHeight / 2;
-        visible_y1 = mapXy[1] + zoomHeight / 2;
-      }
-
-      const scaleX = width / (visible_x1 - visible_x0);
-      const scaleY = height / (visible_y1 - visible_y0);
+      const visible_x0 = centerX - viewW / 2;
+      const visible_x1 = centerX + viewW / 2;
+      const visible_y0 = centerY - viewH / 2;
+      const visible_y1 = centerY + viewH / 2;
 
       const render = () => {
         // Clear background
         ctx.fillStyle = bg;
         ctx.fillRect(0, 0, width, height);
 
-        // 2. Draw background image (territory.png) stretched to full extent coords
+        // 2. Draw background image (territory.png) using uniform scaling
         if (bgImage && !imageError) {
-          const imgLeft = (x0 - visible_x0) * scaleX;
-          const imgRight = (x1 - visible_x0) * scaleX;
-          const imgTop = height - (y1 - visible_y0) * scaleY;
-          const imgBottom = height - (y0 - visible_y0) * scaleY;
+          const imgLeft = (x0 - centerX) * scale + width / 2;
+          const imgRight = (x1 - centerX) * scale + width / 2;
+          const imgTop = -(y1 - centerY) * scale + height / 2;
+          const imgBottom = -(y0 - centerY) * scale + height / 2;
 
           ctx.drawImage(bgImage, imgLeft, imgTop, imgRight - imgLeft, imgBottom - imgTop);
         }
@@ -120,8 +111,8 @@ export function MapPreview({ mapData, mapXy, onClick }: MapPreviewProps) {
             continue;
           }
 
-          const sx = (px - visible_x0) * scaleX;
-          const sy = height - (py - visible_y0) * scaleY;
+          const sx = (px - centerX) * scale + width / 2;
+          const sy = -(py - centerY) * scale + height / 2;
 
           const label = previewPoints.label[i];
           const hue = (label % k) / k * 360;
@@ -132,7 +123,23 @@ export function MapPreview({ mapData, mapXy, onClick }: MapPreviewProps) {
           ctx.fill();
         }
 
-        // 4. Draw pulsing user marker at the center
+        // 4. Draw Vignette & Bottom Text Gradient
+        const vignetteGrad = ctx.createRadialGradient(
+          width / 2, height / 2, Math.min(width, height) * 0.4,
+          width / 2, height / 2, Math.max(width, height) * 0.7
+        );
+        vignetteGrad.addColorStop(0, 'rgba(11, 16, 32, 0)');
+        vignetteGrad.addColorStop(1, 'rgba(11, 16, 32, 0.75)');
+        ctx.fillStyle = vignetteGrad;
+        ctx.fillRect(0, 0, width, height);
+
+        const bottomGrad = ctx.createLinearGradient(0, height - 60, 0, height);
+        bottomGrad.addColorStop(0, 'rgba(11, 16, 32, 0)');
+        bottomGrad.addColorStop(1, 'rgba(11, 16, 32, 0.85)');
+        ctx.fillStyle = bottomGrad;
+        ctx.fillRect(0, height - 60, width, 60);
+
+        // 5. Draw pulsing user marker at the center
         if (mapXy !== null) {
           const cx = width / 2;
           const cy = height / 2;
@@ -189,7 +196,7 @@ export function MapPreview({ mapData, mapXy, onClick }: MapPreviewProps) {
       ref={containerRef}
       layoutId="taste-map-container"
       onClick={onClick}
-      className="relative w-full h-[160px] rounded-2xl overflow-hidden cursor-pointer select-none"
+      className="relative w-full h-[200px] rounded-2xl overflow-hidden cursor-pointer select-none"
       style={{ backgroundColor: bg }}
       whileHover={{ scale: 1.01, filter: 'brightness(1.1)' }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
