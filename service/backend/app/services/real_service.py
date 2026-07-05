@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
 from fastapi import HTTPException
 
 from app.config import Settings
@@ -60,8 +61,15 @@ class RealService(RecommenderService):
                 status_code=422,
                 detail=f"mal_id {req.anchor_mal_id} không có trong corpus.",
             )
-        # "you are here": U đã có sẵn đường encode — forward MLP pumap ~0 chi phí
-        map_xy = self.map.locate(self.rec.encode_U(user).numpy()) if self.map else None
+        # "you are here" = centroid top-20 item HISTORY user chấm cao nhất (> mean score của
+        # chính user) — vị trí là GU user, không phải output model (centroid recs bị ranker kéo
+        # về vùng mainstream; locate(U) thì pumap fit trên item space, U lệch hệ).
+        # Fallback: history không dùng được → centroid top-30 recs → locate(U).
+        map_xy = None
+        if self.map:
+            map_xy = (self.map.locate_items(self._liked_mal_ids(user))
+                      or self.map.locate_items([r["mal_id"] for r in out["main"][:30]])
+                      or self.map.locate(self.rec.encode_U(user).numpy()))
         return RecommendResponse(
             main=[AnimeItem(**r) for r in out["main"]],
             cold=[AnimeItem(**r) for r in out["cold"]],
@@ -72,6 +80,18 @@ class RealService(RecommenderService):
                 map_xy=map_xy,
             ),
         )
+
+    def _liked_mal_ids(self, user: dict, k: int = 20) -> list:
+        """Top-k mal_id user thích nhất cho "you are here": score > mean score của user
+        (mean tính trên item CÓ chấm điểm; score 0 = chưa chấm). Không có score nào
+        (path mal_ids / user không chấm) hoặc mọi score bằng nhau → lấy k đầu của history."""
+        hist, sc = user["hist_idx"], user["hist_score"]
+        scored = sc[sc > 0]
+        keep = np.flatnonzero(sc > scored.mean()) if len(scored) else np.array([], dtype=int)
+        if len(keep) == 0:                                   # không chấm / chấm đều nhau
+            keep = np.arange(len(hist))
+        keep = keep[np.argsort(-sc[keep], kind="stable")][:k]
+        return [int(self.rec.idx2mal[i]) for i in hist[keep]]
 
     def map_payload(self) -> bytes:
         if self.map is None:

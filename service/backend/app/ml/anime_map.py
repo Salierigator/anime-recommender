@@ -40,6 +40,8 @@ class AnimeMap:
         self._layers = [(z[f"W{i}"], z[f"b{i}"]) for i in range(4)]
 
         pts = pd.read_parquet(MAP_DIR / "map_points.parquet")
+        self._xy = {int(m): (float(x), float(y))
+                    for m, x, y in zip(pts["mal_id"], pts["x"], pts["y"])}
         clusters = pd.read_parquet(MAP_DIR / "map_clusters.parquet")
         for col in ("cx", "cy"):
             clusters[col] = np.round(clusters[col].astype(float), 4)
@@ -66,6 +68,14 @@ class AnimeMap:
     @property
     def territory_path(self) -> Path:
         return MAP_DIR / self.meta["territory"]["file"]
+
+    def locate_items(self, mal_ids: list) -> list | None:
+        """Centroid toạ độ map của các mal_id (bỏ id không có trên map — vd nsfw). None nếu rỗng."""
+        xy = [self._xy[m] for m in mal_ids if m in self._xy]
+        if not xy:
+            return None
+        cx, cy = np.mean(xy, axis=0)
+        return [round(float(cx), 4), round(float(cy), 4)]
 
     def locate(self, U: np.ndarray) -> list:
         """User vector U [128] / [1,128] -> [x, y] trên map (forward encoder pumap)."""
