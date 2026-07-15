@@ -10,39 +10,40 @@ venv/
 # OS
 .DS_Store
 
-# Claude local state + guidance
+# Agent guidance + workflow local
 .claude/
 CLAUDE.md
 AGENT.md
-PROGRESS.md
-DOCS_WRITING.md
-REFINE.md
+RECONSTRUCT.md
 service/API_CONTRACT.md
 DESIGN.md
 
-# Large data — KHÔNG đẩy GitHub (raw blocked + train-data frozen giữ trên Drive)
-data/
-cleaned-data/
-train-data/
-artifacts/
+# Data (GB) — không đẩy GitHub
+data/raw/
+data/cleaned/
 legacy/
 
-# Model output (checkpoint persist trên Drive, không vào repo)
-retriever/checkpoints/
-ranker/models/
+# Model artifacts + checkpoints (persist trên Drive)
+artifacts/
+train-data/
+checkpoints/
+models/
 runs/
 
-# Map viz outputs (coords/reducer/html — sinh lại từ artifacts)
+# Map (đóng băng) — outputs sinh lại từ artifacts
 map/outputs/
 
-# Secrets / API keys
+# Secrets
 .env
 
-# Service cache (JSON fetch + dump recs)
+# Service cache
 service/backend/cache/
 
-# Frontend (Node/Vite) — deps + build output, KHÔNG vào repo
+# Frontend deps + build
 service/frontend/node_modules/
 service/frontend/dist/
 service/frontend/.vite/
 service/frontend/*.local
+
+# Slide bảo vệ đồ án (không thuộc sản phẩm)
+slide/

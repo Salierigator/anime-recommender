@@ -1,4 +1,0 @@
-Total anime: 22,821
-
-Correlation popularity vs members: -0.3965
-  (nếu popularity là rank: strong NEGATIVE; nếu là count: strong POSITIVE)

@@ -1,11 +1,11 @@
 """recommender.py — Recommender serving core (model inference). Moved từ recommend.py.
 
 Wrap/consume bởi: CLI (service/backend/recommend.py) và app/services/real_service.py.
-Đọc-only artifacts + cleaned-data (firewall service/CLAUDE.md §0).
+Đọc-only artifacts + data/cleaned (firewall service/CLAUDE.md §0).
 
 ⚠ THỨ TỰ IMPORT load-bearing (giữ nguyên — service/CLAUDE.md §4):
   (1) torch TRƯỚC lightgbm (2 OpenMP runtime → segfault mac);
-  (2) features/pool TRƯỚC user_encode (user_encode chèn retriever/src vào sys.path[0], cũng có
+  (2) features/pool TRƯỚC user_encode (user_encode chèn model/retriever/src vào sys.path[0], cũng có
       config.py → import sau nó lấy NHẦM config retriever).
 """
 from __future__ import annotations
@@ -19,17 +19,17 @@ import pandas as pd
 import polars as pl
 
 ROOT = Path(__file__).resolve().parents[4]                 # anime recommender/
-sys.path.insert(0, str(ROOT / "ranker" / "src"))
+sys.path.insert(0, str(ROOT / "model" / "ranker" / "src"))
 import torch                                               # noqa: E402  (TRƯỚC lightgbm)
 # features/pool TRƯỚC user_encode: cache module `config` của ranker vào sys.modules
-# trước khi user_encode chèn retriever/src (cũng có config.py) vào sys.path[0]
+# trước khi user_encode chèn model/retriever/src (cũng có config.py) vào sys.path[0]
 from features import REF_YEAR, FEATURE_NAMES, ItemFeatures, build_frame, _parse_list  # noqa: E402
 from pool import (cross_features, encode_users, topk_pool,                  # noqa: E402
                   user_stats_from_support)
 from user_encode import ARTIFACTS, encode_gender_joined, load_user_encoder  # noqa: E402
 import lightgbm as lgb                                     # noqa: E402  (SAU torch)
 
-CLEANED = ROOT / "cleaned-data"
+CLEANED = ROOT / "data" / "cleaned"
 
 
 class Recommender:
