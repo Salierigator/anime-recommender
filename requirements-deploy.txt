@@ -1,0 +1,19 @@
+# Deps của SERVING path (HF Space, real mode) — KHÔNG phải train/map/notebook.
+# Pin = đúng bản đang chạy local (venv py3.9) → image py3.11 dựng lại được y hệt.
+#
+# torch CỐ TÌNH không nằm ở đây: Dockerfile cài riêng từ index CPU-only. `pip install torch`
+# mặc định trên Linux kéo cả nvidia-* (CUDA) → image phồng ~2.5GB.
+#
+# Có trong requirements.txt nhưng serve KHÔNG cần: matplotlib seaborn jupyter ipykernel scipy
+# implicit sentence-transformers scikit-learn plotly h5py pytest.
+
+fastapi==0.128.8
+uvicorn[standard]==0.39.0
+pydantic-settings==2.11.0
+
+lightgbm==4.6.0
+numpy==2.0.2
+pandas==2.3.3
+polars==1.36.1
+pyarrow==21.0.0
+requests==2.32.5

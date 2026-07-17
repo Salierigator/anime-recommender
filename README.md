@@ -40,7 +40,7 @@ serving path cannot silently drift from what was trained. Schema:
 | `artifacts/` | Model exports — the model↔service firewall (not committed) |
 | `service/backend/` | FastAPI app + CLI (`recommend.py`), read-only consumer of `artifacts/` |
 | `service/frontend/` | React + Vite + TypeScript UI |
-| `map/` | 2-D UMAP map of the catalog (frozen); powers `GET /api/map` |
+| `map/` | 2-D UMAP map of the catalog (frozen); powers `GET /api/map` when `MAP_ENABLED=1` (off by default) |
 
 ## Quickstart
 

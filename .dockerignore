@@ -1,0 +1,36 @@
+# Build context = repo root. Giữ context nhỏ, và đảm bảo artifacts/data trong image CHỈ đến từ
+# HF model repo (Dockerfile bước 2) — không phải bản local lỡ tay copy vào.
+#
+# ⚠ .dockerignore KHÔNG cùng luật với .gitignore: pattern trần chỉ khớp ở ROOT context, không
+#   đệ quy. `train-data/` bỏ sót model/ranker/train-data/ (1.7GB) → phải viết `**/train-data/`.
+#   Đo thật: thiếu ** = +2.5GB vào image.
+
+.git/
+.github/
+venv/
+**/__pycache__/
+**/.ipynb_checkpoints/
+.pytest_cache/
+.claude/
+.DS_Store
+
+# artifacts + data: vào image qua HF model repo, không qua context
+artifacts/
+data/
+legacy/
+
+# train outputs (nằm sâu trong model/*/ → bắt buộc **/)
+**/train-data/
+**/checkpoints/
+**/models/
+**/runs/
+**/*.ipynb
+
+map/outputs/
+slide/
+
+# frontend deploy riêng (GitHub Pages) — backend image không cần
+service/frontend/
+
+service/backend/cache/
+service/.env

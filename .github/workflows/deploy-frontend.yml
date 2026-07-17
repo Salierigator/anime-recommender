@@ -1,0 +1,54 @@
+# Build service/frontend → GitHub Pages. Backend deploy riêng (HF Space, xem DEPLOY.md).
+#
+# VITE_API_URL = URL của HF Space, set ở repo Settings → Secrets and variables → Actions →
+# Variables (không phải Secrets — nó là URL public, và secret không lọt vào bundle được).
+name: Deploy frontend (GitHub Pages)
+
+on:
+  push:
+    branches: [test_deploy]
+    paths:
+      - 'service/frontend/**'
+      - '.github/workflows/deploy-frontend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Pages chỉ 1 deploy tại 1 thời điểm; huỷ run cũ nếu push liên tiếp.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: service/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: service/frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

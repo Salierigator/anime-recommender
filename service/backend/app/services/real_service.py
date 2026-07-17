@@ -8,8 +8,9 @@ mal_ids   → user_from_mal_ids (path test, không cần MAL API).
   - mal_api import BÊN TRONG _fetch_live → module nạp MAL_CLIENT_ID lúc import (mal_api.py),
     chỉ cần khi thật sự crawl live; mal_ids vẫn chạy được khi thiếu client id.
 
-Map (GET /api/map + meta.map_xy): AnimeMap load kèm — thiếu/lệch map/outputs/service chỉ TẮT map
-(degrade, log ⚠), KHÔNG chặn recommend.
+Map (GET /api/map + meta.map_xy): chỉ load AnimeMap khi MAP_ENABLED=1 (mặc định TẮT — map/ đóng
+băng). Tắt, hoặc thiếu/lệch map/outputs/service → cùng path degrade: /api/map 503, map_xy=null,
+recommend VẪN chạy.
 """
 from __future__ import annotations
 
@@ -31,12 +32,13 @@ class RealService(RecommenderService):
         from app.ml.recommender import Recommender          # lazy (torch/lightgbm)
         self.rec = Recommender()                            # load artifacts ~5s
         self.model_loaded = True
-        from app.ml.anime_map import AnimeMap, MapOutOfSync  # numpy-only, nhẹ
-        try:
-            self.map: Optional[AnimeMap] = AnimeMap()
-        except (FileNotFoundError, MapOutOfSync) as e:
-            print(f"⚠ map TẮT (recommend vẫn chạy): {e}")
-            self.map = None
+        self.map = None
+        if settings.map_enabled:
+            from app.ml.anime_map import AnimeMap, MapOutOfSync  # numpy-only, nhẹ
+            try:
+                self.map = AnimeMap()
+            except (FileNotFoundError, MapOutOfSync) as e:
+                print(f"⚠ map TẮT (recommend vẫn chạy): {e}")
 
     def recommend(self, req: RecommendRequest) -> RecommendResponse:
         if req.mal_ids:

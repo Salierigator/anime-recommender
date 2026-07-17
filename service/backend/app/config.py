@@ -23,6 +23,7 @@ class Settings(BaseSettings):
 
     mock_mode: bool = True
     cors_origins: List[str] = ["http://localhost:5173"]   # Vite dev server
+    map_enabled: bool = False                             # map/ đóng băng — real mode bỏ qua AnimeMap
     default_top_k: int = 20
     default_cold_k: int = 10
     fixtures_dir: Path = BACKEND / "fixtures"
