@@ -83,6 +83,9 @@ def from_html(html, username):
 
     m = FAV_BLOCK_RE.search(html)
     favs = list(dict.fromkeys(FAV_LINK_RE.findall(m.group(1)))) if m else []
+    if len(favs) > 20:  # MAL caps favorites at 10 (20 for supporters)
+        print(f"    [!] {username}: {len(favs)} favorites parsed — FAV regexes "
+              f"likely broken by a MAL redesign, check before trusting this column")
     m = STATS_BLOCK_RE.search(html)
     block = m.group(1) if m else ""
     days = DAYS_RE.search(block)

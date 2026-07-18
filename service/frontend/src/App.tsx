@@ -4,11 +4,12 @@ import { AnimeCard } from './components/AnimeCard';
 import { AnimeModal } from './components/AnimeModal';
 import { MapPreview } from './components/MapPreview';
 import { MapExplorer } from './components/MapExplorer';
-import { recommendAPI, fetchPostersAPI, fetchMapAPI } from './api';
+import { recommendAPI, fetchPostersAPI, fetchMapAPI, pingHealthAPI } from './api';
 import type { AnimeItem, RecommendResponse, MapResponse } from './types';
 
 function App() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isSlowLoading, setIsSlowLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
   // pool contains the raw, unmodified pool of recommendations from backend
@@ -32,6 +33,21 @@ function App() {
   const [selectedMalId, setSelectedMalId] = useState<number | null>(null);
   const [mapData, setMapData] = useState<MapResponse | null>(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
+
+  // Đánh thức backend (free hosting spin down khi idle) ngay khi trang mở
+  useEffect(() => {
+    pingHealthAPI();
+  }, []);
+
+  // Đợi quá 8s (thường là server đang cold start) → hiện thêm dòng trấn an dưới spinner
+  useEffect(() => {
+    if (!isLoading) {
+      setIsSlowLoading(false);
+      return;
+    }
+    const timer = setTimeout(() => setIsSlowLoading(true), 8000);
+    return () => clearTimeout(timer);
+  }, [isLoading]);
 
   const handleSearch = async (username: string) => {
     setIsLoading(true);
@@ -266,6 +282,11 @@ function App() {
               <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
             </div>
             <p className="mt-4 text-gray-500 font-medium">Analyzing your taste...</p>
+            {isSlowLoading && (
+              <p className="mt-2 text-sm text-gray-400">
+                The server is waking up — the first request can take up to a minute.
+              </p>
+            )}
           </div>
         )}
 

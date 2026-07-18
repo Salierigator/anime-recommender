@@ -10,6 +10,11 @@ const api = axios.create({
   },
 });
 
+// Fire-and-forget: đánh thức backend free-tier (spin down khi idle) ngay khi trang mở
+export const pingHealthAPI = (): void => {
+  api.get('/api/health').catch(() => {});
+};
+
 export const recommendAPI = async (data: RecommendRequest): Promise<RecommendResponse> => {
   const response = await api.post<RecommendResponse>('/api/recommend', data);
   return response.data;

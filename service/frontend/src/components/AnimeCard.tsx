@@ -111,22 +111,8 @@ export function AnimeCard({ anime, rank, onClick, posterUrl }: Props) {
           <div className="flex items-center gap-4 mt-2">
             {anime.mal_score !== null && (
               <div className="flex flex-col">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider">MAL</span>
+                <span className="text-[10px] text-gray-400 uppercase tracking-wider">MAL Score</span>
                 <span className="text-sm font-medium text-gray-700">{anime.mal_score.toFixed(2)}</span>
-              </div>
-            )}
-            
-            {anime.pred !== undefined && anime.pred !== null && (
-              <div className="flex flex-col">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider">Pred</span>
-                <span className="text-sm font-medium text-gray-700">{anime.pred.toFixed(2)}</span>
-              </div>
-            )}
-            
-            {anime.cos !== undefined && anime.cos !== null && (
-              <div className="flex flex-col">
-                <span className="text-[10px] text-gray-400 uppercase tracking-wider">Cos</span>
-                <span className="text-sm font-medium text-gray-700">{anime.cos.toFixed(2)}</span>
               </div>
             )}
           </div>
