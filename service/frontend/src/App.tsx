@@ -1,30 +1,44 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { SearchForm } from './components/SearchForm';
 import { AnimeCard } from './components/AnimeCard';
 import { AnimeModal } from './components/AnimeModal';
 import { MapPreview } from './components/MapPreview';
 import { MapExplorer } from './components/MapExplorer';
-import { recommendAPI, fetchPostersAPI, fetchMapAPI, pingHealthAPI } from './api';
-import type { AnimeItem, RecommendResponse, MapResponse } from './types';
+import { recommendAPI, fetchPostersAPI, fetchMapAPI, pingHealthAPI, fetchAnimeDetailFallbackAPI } from './api';
+import type { AnimeItem, RecommendResponse, MapResponse, SearchResultItem } from './types';
 
 function App() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSlowLoading, setIsSlowLoading] = useState(false);
+  const [loadingStates, setLoadingStates] = useState<Record<'username' | 'guest', boolean>>({
+    username: false,
+    guest: false
+  });
+  const [slowLoadingStates, setSlowLoadingStates] = useState<Record<'username' | 'guest', boolean>>({
+    username: false,
+    guest: false
+  });
   const [error, setError] = useState<string | null>(null);
   
-  // pool contains the raw, unmodified pool of recommendations from backend
-  const [pool, setPool] = useState<RecommendResponse | null>(null);
+  const [tabPools, setTabPools] = useState<Record<'username' | 'guest', RecommendResponse | null>>({
+    username: null,
+    guest: null
+  });
   
-  // Client-side filters state
-  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
-  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
-  const [selectedStudios, setSelectedStudios] = useState<string[]>([]);
-  const [minScore, setMinScore] = useState<number>(0);
+  // Client-side filters state (keyed by tab)
+  const [genres, setGenres] = useState<Record<'username' | 'guest', string[]>>({ username: [], guest: [] });
+  const [types, setTypes] = useState<Record<'username' | 'guest', string[]>>({ username: [], guest: [] });
+  const [themes, setThemes] = useState<Record<'username' | 'guest', string[]>>({ username: [], guest: [] });
+  const [studios, setStudios] = useState<Record<'username' | 'guest', string[]>>({ username: [], guest: [] });
+  const [minScores, setMinScores] = useState<Record<'username' | 'guest', number>>({ username: 0, guest: 0 });
   
-  // Client-side display counts
-  const [mainK, setMainK] = useState<number>(20);
-  const [coldK, setColdK] = useState<number>(10);
+  // Client-side display counts (keyed by tab)
+  const [mainKs, setMainKs] = useState<Record<'username' | 'guest', number>>({ username: 20, guest: 20 });
+  const [coldKs, setColdKs] = useState<Record<'username' | 'guest', number>>({ username: 10, guest: 10 });
+
+  const [searchedUsername, setSearchedUsername] = useState<string>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('u') || '';
+  });
   
   // Posters cache map and tracking
   const [posters, setPosters] = useState<Record<number, string | null>>({});
@@ -34,70 +48,236 @@ function App() {
   const [mapData, setMapData] = useState<MapResponse | null>(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
 
-  // Đánh thức backend (free hosting spin down khi idle) ngay khi trang mở
-  useEffect(() => {
-    pingHealthAPI();
-  }, []);
+  // Lifted state
+  const [activeTab, setActiveTab] = useState<'username' | 'guest'>('username');
+  const [guestPicks, setGuestPicks] = useState<SearchResultItem[]>([]);
+  const [watchedSet, setWatchedSet] = useState<Set<number>>(new Set());
+  const hasInitialized = useRef(false);
 
-  // Đợi quá 8s (thường là server đang cold start) → hiện thêm dòng trấn an dưới spinner
-  useEffect(() => {
-    if (!isLoading) {
-      setIsSlowLoading(false);
-      return;
-    }
-    const timer = setTimeout(() => setIsSlowLoading(true), 8000);
-    return () => clearTimeout(timer);
-  }, [isLoading]);
-
-  const handleSearch = async (username: string) => {
-    setIsLoading(true);
+  const handleSearch = async (
+    params: { username?: string; mal_ids?: number[] },
+    searchTab: 'username' | 'guest',
+    skipUrlSync = false,
+    passedWatchedSet?: number[]
+  ) => {
+    setLoadingStates(prev => ({ ...prev, [searchTab]: true }));
     setError(null);
-    setPool(null);
+    setTabPools(prev => ({ ...prev, [searchTab]: null }));
     setPosters({});
     requestedIdsRef.current = new Set();
     
-    // Clear all client filters and display size defaults
-    setSelectedGenres([]);
-    setSelectedTypes([]);
-    setSelectedThemes([]);
-    setSelectedStudios([]);
-    setMinScore(0);
-    setMainK(20);
-    setColdK(10);
+    if (searchTab === 'username' && params.username) {
+      setSearchedUsername(params.username);
+    }
+
+    if (!skipUrlSync) {
+      const url = new URL(window.location.href);
+      if (searchTab === 'username' && params.username) {
+        url.search = `?u=${encodeURIComponent(params.username)}`;
+      } else if (searchTab === 'guest' && params.mal_ids && params.mal_ids.length > 0) {
+        url.search = `?ids=${params.mal_ids.join(',')}`;
+        const wSet = passedWatchedSet ? new Set(passedWatchedSet) : watchedSet;
+        if (wSet.size > 0) {
+          const wArr = Array.from(wSet);
+          if (url.search.length + wArr.join(',').length < 2000) {
+            url.searchParams.set('watched', wArr.join(','));
+          }
+        }
+      }
+      window.history.replaceState(null, '', url.toString());
+    }
 
     try {
-      // Backend returns full pool (main up to 500, cold up to 200)
+      const exIds = passedWatchedSet || Array.from(watchedSet);
       const response = await recommendAPI({
-        username,
+        ...params,
+        exclude_ids: exIds.length > 0 ? exIds : undefined,
         top_k: 500,
         cold_k: 200,
         sfw: true
       });
-      setPool(response);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      if (err.response?.data?.detail) {
-        setError(typeof err.response.data.detail === 'string' 
-          ? err.response.data.detail 
-          : JSON.stringify(err.response.data.detail));
+      setTabPools(prev => ({ ...prev, [searchTab]: response }));
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { detail?: unknown } } };
+      if (axiosErr.response?.data?.detail) {
+        setError(typeof axiosErr.response.data.detail === 'string' 
+          ? axiosErr.response.data.detail 
+          : JSON.stringify(axiosErr.response.data.detail));
       } else {
         setError('An unexpected error occurred while connecting to the server.');
       }
     } finally {
-      setIsLoading(false);
+      setLoadingStates(prev => ({ ...prev, [searchTab]: false }));
     }
   };
 
-  // Extract facets (genres, themes, studios, types) from the current pool
+  // Initialize from localStorage and URL
+  useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    // Load from localStorage first
+    const savedPicks = localStorage.getItem('anime_guest_picks');
+    const savedWatched = localStorage.getItem('anime_watched_set');
+    let picks: SearchResultItem[] = savedPicks ? JSON.parse(savedPicks) : [];
+    let watched: Set<number> = savedWatched ? new Set(JSON.parse(savedWatched)) : new Set();
+
+    // Check URL params
+    const params = new URLSearchParams(window.location.search);
+    const uParam = params.get('u');
+    const idsParam = params.get('ids');
+    const watchedParam = params.get('watched');
+
+    if (uParam) {
+      setActiveTab('username');
+      if (watchedParam) {
+        const wIds = watchedParam.split(',').map(Number).filter(n => !isNaN(n));
+        watched = new Set(wIds);
+        setWatchedSet(watched);
+        localStorage.setItem('anime_watched_set', JSON.stringify(Array.from(watched)));
+      }
+      handleSearch({ username: uParam }, 'username', true);
+    } else if (idsParam) {
+      setActiveTab('guest');
+      const pickIds = idsParam.split(',').map(Number).filter(n => !isNaN(n));
+      picks = pickIds.map(id => ({
+        mal_id: id,
+        title: `ID ${id}`,
+        title_english: null,
+        type: null,
+        year: null,
+        mal_score: null,
+        image_url: null,
+        in_corpus: true
+      }));
+      setGuestPicks(picks);
+      localStorage.setItem('anime_guest_picks', JSON.stringify(picks));
+
+      if (watchedParam) {
+        const wIds = watchedParam.split(',').map(Number).filter(n => !isNaN(n));
+        watched = new Set(wIds);
+        setWatchedSet(watched);
+        localStorage.setItem('anime_watched_set', JSON.stringify(Array.from(watched)));
+      }
+      
+      handleSearch({ mal_ids: pickIds }, 'guest', true, Array.from(watched));
+
+      // Hydrate chips asynchronously
+      pickIds.forEach(id => {
+        fetchAnimeDetailFallbackAPI(id).then(res => {
+          if (res) {
+            setGuestPicks(prev => prev.map(p => p.mal_id === id ? {
+              ...p,
+              title: res.title,
+              image_url: res.image_url,
+              year: res.year,
+              type: res.type
+            } : p));
+          }
+        }).catch(() => {});
+      });
+    } else {
+      setGuestPicks(picks);
+      setWatchedSet(watched);
+    }
+  }, []);
+
+  // Save to localStorage when changed
+  useEffect(() => {
+    if (hasInitialized.current) {
+      localStorage.setItem('anime_guest_picks', JSON.stringify(guestPicks));
+    }
+  }, [guestPicks]);
+
+  useEffect(() => {
+    if (hasInitialized.current) {
+      localStorage.setItem('anime_watched_set', JSON.stringify(Array.from(watchedSet)));
+    }
+  }, [watchedSet]);
+
+  // Synchronize URL parameters with active tab state
+  useEffect(() => {
+    if (!hasInitialized.current) return;
+
+    const url = new URL(window.location.href);
+    if (activeTab === 'username') {
+      // Clear guest params
+      url.searchParams.delete('ids');
+      url.searchParams.delete('watched');
+      
+      // Sync username param
+      if (tabPools.username && searchedUsername) {
+        url.searchParams.set('u', searchedUsername);
+      } else if (loadingStates.username && searchedUsername) {
+        url.searchParams.set('u', searchedUsername);
+      } else {
+        url.searchParams.delete('u');
+      }
+    } else {
+      // Clear username params
+      url.searchParams.delete('u');
+      
+      // Sync guest params
+      if (tabPools.guest && guestPicks.length > 0) {
+        url.searchParams.set('ids', guestPicks.map(p => p.mal_id).join(','));
+        if (watchedSet.size > 0) {
+          url.searchParams.set('watched', Array.from(watchedSet).join(','));
+        } else {
+          url.searchParams.delete('watched');
+        }
+      } else if (loadingStates.guest && guestPicks.length > 0) {
+        url.searchParams.set('ids', guestPicks.map(p => p.mal_id).join(','));
+        if (watchedSet.size > 0) {
+          url.searchParams.set('watched', Array.from(watchedSet).join(','));
+        } else {
+          url.searchParams.delete('watched');
+        }
+      } else {
+        url.searchParams.delete('ids');
+        url.searchParams.delete('watched');
+      }
+    }
+    window.history.replaceState(null, '', url.toString());
+  }, [activeTab, tabPools.username, tabPools.guest, searchedUsername, guestPicks, watchedSet, loadingStates.username, loadingStates.guest]);
+
+  useEffect(() => {
+    pingHealthAPI();
+  }, []);
+
+  useEffect(() => {
+    if (!loadingStates.username) {
+      setSlowLoadingStates(prev => ({ ...prev, username: false }));
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSlowLoadingStates(prev => ({ ...prev, username: true }));
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [loadingStates.username]);
+
+  useEffect(() => {
+    if (!loadingStates.guest) {
+      setSlowLoadingStates(prev => ({ ...prev, guest: false }));
+      return;
+    }
+    const timer = setTimeout(() => {
+      setSlowLoadingStates(prev => ({ ...prev, guest: true }));
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [loadingStates.guest]);
+
+
+  const currentPool = tabPools[activeTab];
+
   const facetOptions = useMemo(() => {
-    if (!pool) return { genres: [], themes: [], studios: [], types: [] };
+    if (!currentPool) return { genres: [], themes: [], studios: [], types: [] };
 
     const genresSet = new Set<string>();
     const themesSet = new Set<string>();
     const studiosSet = new Set<string>();
     const typesSet = new Set<string>();
 
-    const allItems = [...pool.main, ...pool.cold];
+    const allItems = [...currentPool.main, ...currentPool.cold];
     allItems.forEach(item => {
       if (item.genres) item.genres.forEach(g => genresSet.add(g));
       if (item.themes) item.themes.forEach(t => themesSet.add(t));
@@ -111,127 +291,109 @@ function App() {
       studios: Array.from(studiosSet).sort((a, b) => a.localeCompare(b)),
       types: Array.from(typesSet).filter(t => t && t !== '?').sort((a, b) => a.localeCompare(b)),
     };
-  }, [pool]);
+  }, [currentPool]);
 
-  // Client-side filtering check
+  // Drop stale filters when facetOptions change
+  useEffect(() => {
+    if (currentPool) {
+      setGenres(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].filter(g => facetOptions.genres.includes(g))
+      }));
+      setThemes(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].filter(t => facetOptions.themes.includes(t))
+      }));
+      setStudios(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].filter(s => facetOptions.studios.includes(s))
+      }));
+      setTypes(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab].filter(t => facetOptions.types.includes(t))
+      }));
+    }
+  }, [facetOptions, currentPool, activeTab]);
+
   const matchFilters = useCallback((item: AnimeItem) => {
-    // Genres: AND — item must contain ALL selected genres
-    if (selectedGenres.length > 0) {
-      if (!item.genres || !selectedGenres.every(g => item.genres.includes(g))) {
-        return false;
-      }
-    }
+    const activeGenres = genres[activeTab];
+    const activeTypes = types[activeTab];
+    const activeThemes = themes[activeTab];
+    const activeStudios = studios[activeTab];
+    const activeMinScore = minScores[activeTab];
 
-    // Themes: AND — item must contain ALL selected themes
-    if (selectedThemes.length > 0) {
-      if (!item.themes || !selectedThemes.every(t => item.themes.includes(t))) {
-        return false;
-      }
+    if (activeGenres.length > 0) {
+      if (!item.genres || !activeGenres.every(g => item.genres.includes(g))) return false;
     }
-
-    // Studios: OR — item belongs to ANY of the selected studios
-    if (selectedStudios.length > 0) {
-      if (!item.studios || !selectedStudios.some(s => item.studios.includes(s))) {
-        return false;
-      }
+    if (activeThemes.length > 0) {
+      if (!item.themes || !activeThemes.every(t => item.themes.includes(t))) return false;
     }
-
-    // Types: AND between facets, OR within the same facet (item.type ∈ selectedTypes)
-    if (selectedTypes.length > 0) {
-      if (!selectedTypes.includes(item.type)) {
-        return false;
-      }
+    if (activeStudios.length > 0) {
+      if (!item.studios || !activeStudios.some(s => item.studios.includes(s))) return false;
     }
-
-    // Score filter: If minScore > 0, filter out items with mal_score == null or mal_score < minScore
-    if (minScore > 0) {
-      if (item.mal_score === null || item.mal_score < minScore) {
-        return false;
-      }
+    if (activeTypes.length > 0) {
+      if (!activeTypes.includes(item.type)) return false;
     }
-
+    if (activeMinScore > 0) {
+      if (item.mal_score === null || item.mal_score < activeMinScore) return false;
+    }
     return true;
-  }, [selectedGenres, selectedTypes, selectedThemes, selectedStudios, minScore]);
+  }, [genres, types, themes, studios, minScores, activeTab]);
 
-  // Get filtered lists
   const filteredMain = useMemo(() => {
-    if (!pool) return [];
-    return pool.main.filter(matchFilters);
-  }, [pool, matchFilters]);
+    if (!currentPool) return [];
+    return currentPool.main.filter(matchFilters);
+  }, [currentPool, matchFilters]);
 
   const filteredCold = useMemo(() => {
-    if (!pool) return [];
-    return pool.cold.filter(matchFilters);
-  }, [pool, matchFilters]);
+    if (!currentPool) return [];
+    return currentPool.cold.filter(matchFilters);
+  }, [currentPool, matchFilters]);
 
-  // Sliced display lists
   const displayedMain = useMemo(() => {
-    return filteredMain.slice(0, mainK);
-  }, [filteredMain, mainK]);
+    return filteredMain.slice(0, mainKs[activeTab]);
+  }, [filteredMain, mainKs, activeTab]);
 
   const displayedCold = useMemo(() => {
-    return filteredCold.slice(0, coldK);
-  }, [filteredCold, coldK]);
+    return filteredCold.slice(0, coldKs[activeTab]);
+  }, [filteredCold, coldKs, activeTab]);
 
-  // Check if any client-side filters are actively selected
-  const isFiltered = selectedGenres.length > 0 ||
-    selectedTypes.length > 0 ||
-    selectedThemes.length > 0 ||
-    selectedStudios.length > 0 ||
-    minScore > 0;
+  const isFiltered = genres[activeTab].length > 0 ||
+    types[activeTab].length > 0 ||
+    themes[activeTab].length > 0 ||
+    studios[activeTab].length > 0 ||
+    minScores[activeTab] > 0;
 
-  // Poster lazy loading useEffect (debounced by 200ms)
   useEffect(() => {
-    if (!pool) return;
-
+    if (!currentPool) return;
     const displayedIds = [
       ...displayedMain.map(a => a.mal_id),
       ...displayedCold.map(a => a.mal_id)
     ];
-
-    // Find IDs that are not in posters AND not already requested
     const missingIds = displayedIds.filter(
       id => !(id in posters) && !requestedIdsRef.current.has(id)
     );
-
-    if (missingIds.length === 0) {
-      return;
-    }
-
+    if (missingIds.length === 0) return;
     const timer = setTimeout(async () => {
-      // Register when the API fetch action actually begins
       missingIds.forEach(id => requestedIdsRef.current.add(id));
       try {
         const postersData = await fetchPostersAPI(missingIds);
-        setPosters(prev => ({
-          ...prev,
-          ...postersData
-        }));
-      } catch (err) {
-        console.error("Failed to fetch batch posters", err);
-        // fallback to null map so cards fall back to individual Jikan calls
+        setPosters(prev => ({ ...prev, ...postersData }));
+      } catch {
         const fallbackData: Record<number, string | null> = {};
-        missingIds.forEach(id => {
-          fallbackData[id] = null;
-        });
-        setPosters(prev => ({
-          ...prev,
-          ...fallbackData
-        }));
+        missingIds.forEach(id => { fallbackData[id] = null; });
+        setPosters(prev => ({ ...prev, ...fallbackData }));
       }
     }, 200);
-
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayedMain, displayedCold, pool]);
+  }, [displayedMain, displayedCold, currentPool]);
 
-  // Lazy fetch map data when pool becomes available
   useEffect(() => {
-    if (pool && !mapData) {
+    const hasAnyPool = tabPools.username || tabPools.guest;
+    if (hasAnyPool && !mapData) {
       fetchMapAPI()
         .then((data) => setMapData(data))
         .catch((err) => {
-          // 503 map tắt phía server -> KHÔNG render dải preview, không lỗi console đỏ
           if (err.response?.status === 503) {
             console.log('Map feature is currently disabled on the server (503).');
           } else {
@@ -239,7 +401,37 @@ function App() {
           }
         });
     }
-  }, [pool, mapData]);
+  }, [tabPools, mapData]);
+
+  const handleSeen = (malId: number) => {
+    setWatchedSet(prev => {
+      const next = new Set(prev);
+      if (next.has(malId)) {
+        next.delete(malId);
+      } else {
+        next.add(malId);
+      }
+      return next;
+    });
+  };
+
+  const handleLove = (anime: AnimeItem, posterUrl?: string | null) => {
+    setGuestPicks(prev => {
+      if (prev.some(p => p.mal_id === anime.mal_id)) {
+        return prev.filter(p => p.mal_id !== anime.mal_id);
+      }
+      return [...prev, {
+        mal_id: anime.mal_id,
+        title: anime.title,
+        title_english: null,
+        type: anime.type,
+        year: anime.year,
+        mal_score: anime.mal_score,
+        image_url: posterUrl || null,
+        in_corpus: true
+      }];
+    });
+  };
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-gray-200">
@@ -254,35 +446,39 @@ function App() {
           
           <SearchForm 
             onSubmit={handleSearch} 
-            isLoading={isLoading}
+            isLoading={loadingStates[activeTab]}
             facetOptions={facetOptions}
-            selectedGenres={selectedGenres}
-            setSelectedGenres={setSelectedGenres}
-            selectedTypes={selectedTypes}
-            setSelectedTypes={setSelectedTypes}
-            selectedThemes={selectedThemes}
-            setSelectedThemes={setSelectedThemes}
-            selectedStudios={selectedStudios}
-            setSelectedStudios={setSelectedStudios}
-            minScore={minScore}
-            setMinScore={setMinScore}
-            mainK={mainK}
-            setMainK={setMainK}
-            coldK={coldK}
-            setColdK={setColdK}
-            hasPool={!!pool}
+            selectedGenres={genres[activeTab]}
+            setSelectedGenres={(val) => setGenres(prev => ({ ...prev, [activeTab]: val }))}
+            selectedTypes={types[activeTab]}
+            setSelectedTypes={(val) => setTypes(prev => ({ ...prev, [activeTab]: val }))}
+            selectedThemes={themes[activeTab]}
+            setSelectedThemes={(val) => setThemes(prev => ({ ...prev, [activeTab]: val }))}
+            selectedStudios={studios[activeTab]}
+            setSelectedStudios={(val) => setStudios(prev => ({ ...prev, [activeTab]: val }))}
+            minScore={minScores[activeTab]}
+            setMinScore={(val) => setMinScores(prev => ({ ...prev, [activeTab]: val }))}
+            mainK={mainKs[activeTab]}
+            setMainK={(val) => setMainKs(prev => ({ ...prev, [activeTab]: val }))}
+            coldK={coldKs[activeTab]}
+            setColdK={(val) => setColdKs(prev => ({ ...prev, [activeTab]: val }))}
+            hasPool={!!currentPool}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            guestPicks={guestPicks}
+            setGuestPicks={setGuestPicks}
           />
         </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-12">
-        {isLoading && (
+        {loadingStates[activeTab] && (
           <div className="text-center py-20">
             <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-gray-900 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" role="status">
               <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">Loading...</span>
             </div>
             <p className="mt-4 text-gray-500 font-medium">Analyzing your taste...</p>
-            {isSlowLoading && (
+            {slowLoadingStates[activeTab] && (
               <p className="mt-2 text-sm text-gray-400">
                 The server is waking up — the first request can take up to a minute.
               </p>
@@ -297,26 +493,45 @@ function App() {
           </div>
         )}
 
-        {pool && !isLoading && (
+        {currentPool && !loadingStates[activeTab] && (
           <div className="space-y-16 animate-in fade-in duration-500">
-            {/* Meta Info */}
             <div className="text-center text-sm text-gray-400">
-              <p>Based on {pool.meta.total_entries} entries from your list</p>
+              {activeTab === 'guest' ? (
+                <p>Based on your {currentPool.meta.total_entries ?? guestPicks.length} favorite anime</p>
+              ) : (
+                <p>Based on {currentPool.meta.total_entries} entries from your list</p>
+              )}
             </div>
 
-            {/* Your Taste Map Preview Banner */}
             {mapData && (
               <MapPreview
                 mapData={mapData}
-                mapXy={pool.meta.map_xy ?? null}
+                mapXy={currentPool.meta.map_xy ?? null}
                 onClick={() => setIsMapOpen(true)}
               />
             )}
 
-            {/* Main Recommendations */}
             <section>
               <div className="flex items-end justify-between mb-6 pb-2 border-b border-gray-100">
-                <h2 className="text-2xl font-bold tracking-tight">Main Recommendations</h2>
+                <div className="flex items-center gap-4">
+                  <h2 className="text-2xl font-bold tracking-tight">Main Recommendations</h2>
+                  {activeTab === 'guest' && (
+                    <div className="hidden sm:flex items-center gap-3 mt-1">
+                      <span className="text-xs text-gray-400">
+                        Mark cards as seen or favorite, then press Get recommendations to refresh
+                      </span>
+                      {watchedSet.size > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setWatchedSet(new Set())}
+                          className="text-xs underline text-gray-500 hover:text-gray-900 cursor-pointer"
+                        >
+                          Clear seen ({watchedSet.size})
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <span className="text-sm text-gray-500">
                   {isFiltered
                     ? `${filteredMain.length} matching items`
@@ -332,6 +547,11 @@ function App() {
                       rank={idx + 1} 
                       onClick={() => setSelectedMalId(anime.mal_id)}
                       posterUrl={posters[anime.mal_id]}
+                      isGuestMode={activeTab === 'guest'}
+                      isSeen={watchedSet.has(anime.mal_id)}
+                      isLoved={guestPicks.some(p => p.mal_id === anime.mal_id)}
+                      onSeen={() => handleSeen(anime.mal_id)}
+                      onLove={() => handleLove(anime, posters[anime.mal_id])}
                     />
                   ))}
                 </div>
@@ -342,7 +562,6 @@ function App() {
               )}
             </section>
 
-            {/* Cold Recommendations */}
             <section>
               <div className="flex items-end justify-between mb-6 pb-2 border-b border-gray-100">
                 <h2 className="text-2xl font-bold tracking-tight text-gray-600">New & Trending (Cold)</h2>
@@ -360,6 +579,11 @@ function App() {
                       anime={anime} 
                       onClick={() => setSelectedMalId(anime.mal_id)}
                       posterUrl={posters[anime.mal_id]}
+                      isGuestMode={activeTab === 'guest'}
+                      isSeen={watchedSet.has(anime.mal_id)}
+                      isLoved={guestPicks.some(p => p.mal_id === anime.mal_id)}
+                      onSeen={() => handleSeen(anime.mal_id)}
+                      onLove={() => handleLove(anime, posters[anime.mal_id])}
                     />
                   ))}
                 </div>
@@ -370,7 +594,7 @@ function App() {
               )}
             </section>
 
-            {pool.main.length === 0 && pool.cold.length === 0 && (
+            {currentPool.main.length === 0 && currentPool.cold.length === 0 && (
               <div className="text-center py-20 text-gray-500">
                 No recommendations found.
               </div>
@@ -389,9 +613,9 @@ function App() {
             isOpen={isMapOpen}
             onClose={() => setIsMapOpen(false)}
             mapData={mapData}
-            mapXy={pool?.meta.map_xy ?? null}
-            mainRecs={pool?.main ?? []}
-            coldRecs={pool?.cold ?? []}
+            mapXy={currentPool?.meta.map_xy ?? null}
+            mainRecs={currentPool?.main ?? []}
+            coldRecs={currentPool?.cold ?? []}
             onSelectAnime={(malId) => setSelectedMalId(malId)}
             isDetailOpen={!!selectedMalId}
           />

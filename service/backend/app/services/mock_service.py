@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import HTTPException
 
 from app.config import ROOT, Settings
+from app.schemas.anime import SearchResult
 from app.schemas.recommend import (AnimeItem, RecommendMeta, RecommendRequest,
                                     RecommendResponse)
 from app.services.base import RecommenderService
@@ -27,8 +28,11 @@ class MockService(RecommenderService):
         self._map_bytes = map_path.read_bytes() if map_path.exists() else None
 
     def recommend(self, req: RecommendRequest) -> RecommendResponse:
-        main = [AnimeItem(**r) for r in self._data["main"]][: req.top_k]
-        cold = [AnimeItem(**r) for r in self._data["cold"]][: req.cold_k]
+        drop = set(req.exclude_ids or [])                    # mock mô phỏng seen-mask
+        main = [AnimeItem(**r) for r in self._data["main"]
+                if r["mal_id"] not in drop][: req.top_k]
+        cold = [AnimeItem(**r) for r in self._data["cold"]
+                if r["mal_id"] not in drop][: req.cold_k]
         fmeta = self._data.get("meta", {})
         meta = RecommendMeta(
             source="mock",
@@ -41,6 +45,15 @@ class MockService(RecommenderService):
             map_xy=fmeta.get("map_xy"),
         )
         return RecommendResponse(main=main, cold=cold, meta=meta)
+
+    def search(self, q: str, limit: int) -> List[SearchResult]:
+        # mock: substring-match trên item của fixture (main + cold) — frontend dev offline
+        ql = q.lower()
+        hits = [r for r in self._data["main"] + self._data["cold"]
+                if ql in r["title"].lower()]
+        return [SearchResult(mal_id=r["mal_id"], title=r["title"], type=r.get("type"),
+                             year=r.get("year"), mal_score=r.get("mal_score"))
+                for r in hits[:limit]]
 
     def map_payload(self) -> bytes:
         if self._map_bytes is None:

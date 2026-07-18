@@ -94,6 +94,37 @@ def get_main_picture(anime_id):
     return pic.get("large") or pic.get("medium")
 
 
+def user_exists(username):
+    """MAL v2 animelist limit=1 — True/False nếu xác định được (403 = list private nhưng
+    user TỒN TẠI), None = không rõ (network/5xx) → caller đừng kết luận."""
+    try:
+        resp = requests.get(f"{MAL_BASE}/users/{username}/animelist",
+                            headers=MAL_HEADERS, params={"limit": 1}, timeout=10)
+    except requests.RequestException:
+        return None
+    if resp.status_code == 200:
+        return True
+    if resp.status_code == 404:
+        return False
+    if resp.status_code == 403:
+        return True
+    return None
+
+
+SEARCH_FIELDS = "id,title,alternative_titles,main_picture,start_date,media_type,mean"
+
+
+def search_anime(q, limit=10):
+    """MAL v2 anime search (matches romaji + english + synonyms). SFW-only
+    (no `nsfw` param -> MAL hides adult entries). Returns list of node dicts."""
+    data = _get(
+        f"{MAL_BASE}/anime",
+        headers=MAL_HEADERS,
+        params={"q": q, "limit": limit, "fields": SEARCH_FIELDS},
+    )
+    return [e["node"] for e in data.get("data", [])] if data else []
+
+
 # --- 2a. user scored history (MAL v2, paginated) ----------------------------
 def get_user_anime_list(username, fields=ANIMELIST_FIELDS, limit=1000):
     url = f"{MAL_BASE}/users/{username}/animelist"

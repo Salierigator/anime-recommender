@@ -2,6 +2,51 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ExternalLink, AlertCircle } from 'lucide-react';
 import { fetchAnimeDetail } from '../utils/jikanQueue';
+import { fetchAnimeDetailFallbackAPI } from '../api';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeAnimeData(data: any, source: 'jikan' | 'backend') {
+  if (source === 'backend') {
+    return {
+      title: data.title,
+      title_english: data.title_english,
+      image_url: data.image_url,
+      score: data.score,
+      rank: data.rank,
+      popularity: data.popularity,
+      type: data.type,
+      year: data.year,
+      episodes: data.episodes,
+      status: data.status,
+      genres: data.genres || [],
+      studios: data.studios || [],
+      synopsis: data.synopsis,
+    };
+  }
+
+  // Jikan normalization
+  const tags = [
+    ...(data?.genres || []),
+    ...(data?.themes || []),
+    ...(data?.demographics || [])
+  ].map((t: any) => t.name);
+
+  return {
+    title: data?.title,
+    title_english: data?.title_english,
+    image_url: data?.images?.jpg?.large_image_url || data?.images?.jpg?.image_url,
+    score: data?.score,
+    rank: data?.rank,
+    popularity: data?.popularity,
+    type: data?.type,
+    year: data?.year || data?.aired?.prop?.from?.year || data?.aired?.string?.split(' to ')[0]?.trim(),
+    episodes: data?.episodes,
+    status: data?.status,
+    genres: tags,
+    studios: data?.studios?.map((s: any) => s.name) || [],
+    synopsis: data?.synopsis,
+  };
+}
 
 interface AnimeModalProps {
   malId: number | null;
@@ -25,21 +70,42 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
     setIsLoading(true);
     setError(false);
 
-    fetchAnimeDetail(malId)
-      .then((res) => {
-        if (isMounted) {
-          if (res) {
-            setData(res);
-          } else {
-            setError(true);
-          }
+    fetchAnimeDetail(malId, { priority: true })
+      .then(async (res) => {
+        if (!isMounted) return;
+        if (res) {
+          setData(normalizeAnimeData(res, 'jikan'));
           setIsLoading(false);
+        } else {
+          // Jikan failed (returned null/threw), fallback to backend
+          try {
+            const fallbackRes = await fetchAnimeDetailFallbackAPI(malId);
+            if (isMounted) {
+              setData(normalizeAnimeData(fallbackRes, 'backend'));
+              setIsLoading(false);
+            }
+          } catch (err) {
+            if (isMounted) {
+              setError(true);
+              setIsLoading(false);
+            }
+          }
         }
       })
-      .catch(() => {
-        if (isMounted) {
-          setError(true);
-          setIsLoading(false);
+      .catch(async () => {
+        if (!isMounted) return;
+        // Jikan threw an error, fallback to backend
+        try {
+          const fallbackRes = await fetchAnimeDetailFallbackAPI(malId);
+          if (isMounted) {
+            setData(normalizeAnimeData(fallbackRes, 'backend'));
+            setIsLoading(false);
+          }
+        } catch (err) {
+          if (isMounted) {
+            setError(true);
+            setIsLoading(false);
+          }
         }
       });
 
@@ -67,17 +133,10 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
     }
   };
 
-  const imageUrl = data?.images?.jpg?.large_image_url || data?.images?.jpg?.image_url;
-  const year = data?.year || data?.aired?.prop?.from?.year || data?.aired?.string?.split(' to ')[0]?.trim();
-
-  // Combine tags
-  const tags = [
-    ...(data?.genres || []),
-    ...(data?.themes || []),
-    ...(data?.demographics || [])
-  ].map((t: any) => t.name);
-
-  const studios = data?.studios?.map((s: any) => s.name).join(', ');
+  const imageUrl = data?.image_url;
+  const year = data?.year;
+  const tags = data?.genres || [];
+  const studios = data?.studios?.join(', ');
 
   return createPortal(
     <div
@@ -114,9 +173,26 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
                 onClick={() => {
                   setIsLoading(true);
                   setError(false);
-                  fetchAnimeDetail(malId!).then(res => {
-                    if (res) setData(res);
-                    else setError(true);
+                  fetchAnimeDetail(malId!, { priority: true }).then(async (res) => {
+                    if (res) {
+                      setData(normalizeAnimeData(res, 'jikan'));
+                      setIsLoading(false);
+                    } else {
+                      try {
+                        const fallbackRes = await fetchAnimeDetailFallbackAPI(malId!);
+                        setData(normalizeAnimeData(fallbackRes, 'backend'));
+                      } catch (err) {
+                        setError(true);
+                      }
+                      setIsLoading(false);
+                    }
+                  }).catch(async () => {
+                    try {
+                      const fallbackRes = await fetchAnimeDetailFallbackAPI(malId!);
+                      setData(normalizeAnimeData(fallbackRes, 'backend'));
+                    } catch (err) {
+                      setError(true);
+                    }
                     setIsLoading(false);
                   });
                 }}
@@ -213,7 +289,7 @@ export function AnimeModal({ malId, isOpen, onClose }: AnimeModalProps) {
                 {/* Tags */}
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-2 mb-6">
-                    {tags.map((tag, idx) => (
+                    {tags.map((tag: string, idx: number) => (
                       <span key={idx} className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-sm border border-gray-200">
                         {tag}
                       </span>

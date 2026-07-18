@@ -35,6 +35,68 @@ def test_recommend_mock_has_map_xy():
     assert len(r.json()["meta"]["map_xy"]) == 2       # fixture có sẵn [x, y]
 
 
+def test_recommend_exclude_ids():
+    with TestClient(app) as client:
+        first = client.post("/api/recommend", json={"username": "anyone"}) \
+            .json()["main"][0]["mal_id"]
+        r = client.post("/api/recommend",
+                        json={"username": "anyone", "exclude_ids": [first]})
+    assert r.status_code == 200
+    assert first not in [x["mal_id"] for x in r.json()["main"]]
+
+
+def test_search_mock_substring():
+    with TestClient(app) as client:
+        r = client.get("/api/search", params={"q": "clannad"})
+    assert r.status_code == 200
+    results = r.json()["results"]
+    assert results and results[0]["title"] == "Clannad"
+    assert {"mal_id", "title", "in_corpus"} <= set(results[0])
+
+
+def test_search_q_too_short():
+    with TestClient(app) as client:
+        r = client.get("/api/search", params={"q": "a"})
+    assert r.status_code == 422
+
+
+def test_anime_details_mapped(monkeypatch):
+    import app.api.routes.anime as anime_route
+    detail = {"mal_id": 52991, "title": "Sousou no Frieren", "score": 9.31,
+              "type": "TV", "year": 2023, "genres": ["Adventure"], "studios": ["Madhouse"]}
+    monkeypatch.setattr(anime_route, "fetch_details", lambda mid: detail)
+    with TestClient(app) as client:
+        r = client.get("/api/anime/52991")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["title"] == "Sousou no Frieren" and body["score"] == 9.31
+    assert r.headers["cache-control"] == "public, max-age=86400"
+
+
+def test_anime_details_unavailable(monkeypatch):
+    import app.api.routes.anime as anime_route
+    monkeypatch.setattr(anime_route, "fetch_details", lambda mid: None)
+    with TestClient(app) as client:
+        r = client.get("/api/anime/1")
+    assert r.status_code == 404
+
+
+def test_username_exists(monkeypatch):
+    import app.clients.mal_api as mal_api
+    monkeypatch.setattr(mal_api, "user_exists", lambda u: u == "realuser")
+    with TestClient(app) as client:
+        assert client.get("/api/users/realuser/exists").json() == {"exists": True}
+        assert client.get("/api/users/ghostuser/exists").json() == {"exists": False}
+
+
+def test_username_exists_indeterminate(monkeypatch):
+    import app.clients.mal_api as mal_api
+    monkeypatch.setattr(mal_api, "user_exists", lambda u: None)
+    with TestClient(app) as client:
+        r = client.get("/api/users/unknown-state-user/exists")
+    assert r.status_code == 502
+
+
 def test_map_mock_shape():
     with TestClient(app) as client:
         r = client.get("/api/map")

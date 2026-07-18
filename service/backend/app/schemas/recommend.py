@@ -31,6 +31,9 @@ class RecommendRequest(BaseModel):
     live: bool = False                 # ép fetch MAL dù username có trong dataset
     anchor_mal_id: Optional[int] = None  # "tìm anime giống mal_id này" (giữ cá nhân hoá user)
     sfw: bool = True                   # loại hentai khỏi gợi ý (mặc định bật — an toàn demo)
+    exclude_ids: Optional[List[int]] = Field(default=None, max_length=1000)
+    # mal_id user đánh dấu "đã xem" trên UI → union vào seen-mask (loại khỏi recs,
+    # KHÔNG phải tín hiệu thích — thích thì đưa vào mal_ids)
 
     @model_validator(mode="after")
     def _need_user_or_ids(self) -> "RecommendRequest":

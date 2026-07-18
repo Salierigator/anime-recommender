@@ -7,8 +7,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
+from app.schemas.anime import SearchResult
 from app.schemas.recommend import RecommendRequest, RecommendResponse
 
 
@@ -17,6 +18,11 @@ class RecommenderService(ABC):
 
     @abstractmethod
     def recommend(self, req: RecommendRequest) -> RecommendResponse:
+        ...
+
+    @abstractmethod
+    def search(self, q: str, limit: int) -> List[SearchResult]:
+        """Autocomplete title → candidate cho guest picker (GET /api/search)."""
         ...
 
     @abstractmethod

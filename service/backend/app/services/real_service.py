@@ -15,15 +15,17 @@ recommend VẪN chạy.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 from fastapi import HTTPException
 
 from app.config import Settings
+from app.schemas.anime import SearchResult
 from app.schemas.recommend import (AnimeItem, RecommendMeta, RecommendRequest,
                                     RecommendResponse)
 from app.services.base import RecommenderService
+from app.services.details import media_label
 
 
 class RealService(RecommenderService):
@@ -32,6 +34,7 @@ class RealService(RecommenderService):
         from app.ml.recommender import Recommender          # lazy (torch/lightgbm)
         self.rec = Recommender()                            # load artifacts ~5s
         self.model_loaded = True
+        self._search_cache: dict = {}                       # query đã normalize -> results
         self.map = None
         if settings.map_enabled:
             from app.ml.anime_map import AnimeMap, MapOutOfSync  # numpy-only, nhẹ
@@ -54,6 +57,11 @@ class RealService(RecommenderService):
                 )
             user = self.rec.user_from_animelist(animelist, profile, req.username)
             total_entries = len(animelist)                   # tổng entries trên list (khớp profile)
+
+        if req.exclude_ids:                                  # "đã xem" trên UI → mask thêm
+            extra = [self.rec.mal2idx[i] for i in req.exclude_ids
+                     if i in self.rec.mal2idx]
+            user["seen"] = np.union1d(user["seen"], np.asarray(extra, dtype=np.int64))
 
         try:
             out = self.rec.recommend(user, top_k=req.top_k, cold_k=req.cold_k,
@@ -94,6 +102,35 @@ class RealService(RecommenderService):
             keep = np.arange(len(hist))
         keep = keep[np.argsort(-sc[keep], kind="stable")][:k]
         return [int(self.rec.idx2mal[i]) for i in hist[keep]]
+
+    def search(self, q: str, limit: int) -> List[SearchResult]:
+        """Proxy MAL v2 search (match cả title english/synonym — details.csv chỉ có romaji)
+        + cờ in_corpus để frontend báo pick nào model chưa biết."""
+        key = (q.lower().strip(), limit)
+        if key in self._search_cache:
+            return self._search_cache[key]
+        try:
+            from app.clients import mal_api                  # lazy: nạp MAL_CLIENT_ID lúc import
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        out = []
+        for node in mal_api.search_anime(q, limit=limit):
+            pic = node.get("main_picture") or {}
+            start = node.get("start_date") or ""
+            out.append(SearchResult(
+                mal_id=node["id"], title=node.get("title") or "?",
+                title_english=(node.get("alternative_titles") or {}).get("en") or None,
+                type=media_label(node.get("media_type")),
+                year=int(start[:4]) if start[:4].isdigit() else None,
+                mal_score=node.get("mean"),
+                image_url=pic.get("medium") or pic.get("large"),
+                in_corpus=node["id"] in self.rec.mal2idx,
+            ))
+        if out:                                              # không cache lỗi/rỗng (retry được)
+            if len(self._search_cache) > 256:
+                self._search_cache.clear()
+            self._search_cache[key] = out
+        return out
 
     def map_payload(self) -> bytes:
         if self.map is None:

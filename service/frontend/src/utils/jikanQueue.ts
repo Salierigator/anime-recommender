@@ -49,8 +49,7 @@ async function processQueue() {
       item.resolve(animeData);
     } catch (err) {
       console.error(`Error fetching detail for ${item.malId}:`, err);
-      // Even on error, cache null so we don't retry repeatedly and get blocked
-      CACHE.set(item.malId, null);
+      // Do not cache null on error, so retry attempts can actually fetch again
       item.resolve(null);
     }
 
@@ -65,13 +64,17 @@ async function processQueue() {
  * Fetches the full detail object for a given anime using Jikan API.
  * Uses a global queue to avoid hitting rate limits.
  */
-export function fetchAnimeDetail(malId: number): Promise<any | null> {
+export function fetchAnimeDetail(malId: number, options?: { priority?: boolean }): Promise<any | null> {
   if (CACHE.has(malId)) {
     return Promise.resolve(CACHE.get(malId));
   }
 
   return new Promise((resolve) => {
-    queue.push({ malId, resolve });
+    if (options?.priority) {
+      queue.unshift({ malId, resolve });
+    } else {
+      queue.push({ malId, resolve });
+    }
     processQueue();
   });
 }

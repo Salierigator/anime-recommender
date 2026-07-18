@@ -24,7 +24,9 @@ export interface RecommendMeta {
 }
 
 export interface RecommendRequest {
-  username: string;
+  username?: string;
+  mal_ids?: number[];
+  exclude_ids?: number[];
   top_k: number;
   cold_k: number;
   sfw?: boolean;
@@ -66,4 +68,19 @@ export interface MapResponse {
     territory_url: string;
     bg: string;
   };
+}
+
+export interface SearchResultItem {
+  mal_id: number;
+  title: string;
+  title_english: string | null;
+  type: string | null;
+  year: number | null;
+  mal_score: number | null;
+  image_url: string | null;
+  in_corpus: boolean;
+}
+
+export interface SearchResponse {
+  results: SearchResultItem[];
 }

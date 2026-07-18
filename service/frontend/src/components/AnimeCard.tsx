@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 import { useEffect, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Eye, Heart } from 'lucide-react';
 import type { AnimeItem } from '../types';
 import { fetchAnimePoster } from '../utils/jikanQueue';
 
@@ -9,9 +9,14 @@ interface Props {
   rank?: number;
   onClick?: () => void;
   posterUrl?: string | null;
+  isGuestMode?: boolean;
+  isSeen?: boolean;
+  isLoved?: boolean;
+  onSeen?: () => void;
+  onLove?: () => void;
 }
 
-export function AnimeCard({ anime, rank, onClick, posterUrl }: Props) {
+export function AnimeCard({ anime, rank, onClick, posterUrl, isGuestMode, isSeen, isLoved, onSeen, onLove }: Props) {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isUrlResolved, setIsUrlResolved] = useState<boolean>(false);
   const [isImageLoaded, setIsImageLoaded] = useState<boolean>(false);
@@ -57,9 +62,44 @@ export function AnimeCard({ anime, rank, onClick, posterUrl }: Props) {
 
   return (
     <div 
-      className={`flex flex-col border border-gray-200 bg-white hover:shadow-md transition-shadow ${onClick ? 'cursor-pointer' : ''}`}
+      className={`flex flex-col border border-gray-200 bg-white hover:shadow-md transition-shadow relative group ${onClick ? 'cursor-pointer' : ''}`}
       onClick={onClick}
     >
+      {isGuestMode && (
+        <div className="absolute top-2 right-2 flex gap-1 z-20">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onSeen?.();
+            }}
+            className={`p-1.5 border rounded-none shadow-sm transition-all duration-200 cursor-pointer ${
+              isSeen
+                ? 'bg-sky-50 border-sky-500 text-sky-600 opacity-100'
+                : 'bg-white border-gray-200 text-gray-400 hover:text-gray-900 sm:opacity-0 sm:group-hover:opacity-100'
+            }`}
+            title="Seen it — hide & don't recommend"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onLove?.();
+            }}
+            className={`p-1.5 border rounded-none shadow-sm transition-all duration-200 cursor-pointer ${
+              isLoved
+                ? 'bg-red-50 border-red-500 text-red-500 opacity-100'
+                : 'bg-white border-gray-200 text-gray-400 hover:text-red-500 sm:opacity-0 sm:group-hover:opacity-100'
+            }`}
+            title="Love it — add to favorites"
+          >
+            <Heart className={`w-4 h-4 ${isLoved ? 'fill-red-500' : ''}`} />
+          </button>
+        </div>
+      )}
+
       <div className="flex h-36">
         {/* Poster Image or Placeholder */}
         <div className="w-24 h-36 bg-gray-100 flex items-center justify-center flex-shrink-0 border-r border-gray-200 overflow-hidden relative">

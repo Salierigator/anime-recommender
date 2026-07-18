@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { RecommendRequest, RecommendResponse, MapResponse } from './types';
+import type { RecommendRequest, RecommendResponse, MapResponse, SearchResponse } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -43,4 +43,24 @@ export const fetchMapAPI = async (): Promise<MapResponse> => {
   return response.data;
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const fetchAnimeDetailFallbackAPI = async (malId: number): Promise<any> => {
+  const response = await api.get(`/api/anime/${malId}`);
+  return response.data;
+};
+
+export const searchAnimeAPI = async (query: string, limit: number = 10, signal?: AbortSignal): Promise<SearchResponse> => {
+  const response = await api.get<SearchResponse>('/api/search', {
+    params: { q: query, limit },
+    signal
+  });
+  return response.data;
+};
+
+export const checkUsernameExistsAPI = async (username: string, signal?: AbortSignal): Promise<{ exists: boolean }> => {
+  const response = await api.get<{ exists: boolean }>(`/api/users/${username}/exists`, { signal });
+  return response.data;
+};
+
 export { API_URL };
+
