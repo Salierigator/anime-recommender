@@ -20,12 +20,15 @@ def test_recommend_mock_shape_and_cut():
     assert len(body["main"]) <= 5
     assert len(body["cold"]) <= 3
     assert body["meta"]["mode"] == "mock"
+    assert {"popularity", "members", "start_date"} <= set(body["main"][0])  # sort + card client-side
 
 
-def test_recommend_requires_user_or_ids():
+def test_recommend_empty_body_is_guest():
+    # không username lẫn mal_ids → guest (history rỗng), KHÔNG còn 422
     with TestClient(app) as client:
         r = client.post("/api/recommend", json={"top_k": 5})
-    assert r.status_code == 422
+    assert r.status_code == 200
+    assert r.json()["main"]
 
 
 def test_recommend_mock_has_map_xy():

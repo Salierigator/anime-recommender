@@ -6,7 +6,7 @@ poster qua Jikan, slot cho frontend — backend hiện CHƯA điền).
 """
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class AnimeItem(BaseModel):
@@ -15,6 +15,9 @@ class AnimeItem(BaseModel):
     type: str
     year: Optional[int] = None
     mal_score: Optional[float] = None
+    popularity: Optional[int] = None   # rank độ phổ biến MAL (NHỎ = phổ biến) — sort client-side
+    members: Optional[int] = None      # số user MAL có anime trong list — hiện trên card
+    start_date: Optional[str] = None   # "YYYY-MM-DD" — sort theo ngày ra mắt client-side
     pred: Optional[float] = None       # điểm ranker (chỉ có ở list "main")
     cos: Optional[float] = None        # cosine retriever
     genres: List[str] = Field(default_factory=list)    # cho filter client-side
@@ -34,12 +37,8 @@ class RecommendRequest(BaseModel):
     exclude_ids: Optional[List[int]] = Field(default=None, max_length=1000)
     # mal_id user đánh dấu "đã xem" trên UI → union vào seen-mask (loại khỏi recs,
     # KHÔNG phải tín hiệu thích — thích thì đưa vào mal_ids)
-
-    @model_validator(mode="after")
-    def _need_user_or_ids(self) -> "RecommendRequest":
-        if not self.username and not self.mal_ids:
-            raise ValueError("cần 'username' hoặc 'mal_ids'")
-        return self
+    # KHÔNG có cả username lẫn mal_ids → guest: history rỗng (UserTower h_empty)
+    # → gợi ý generic thiên phổ biến, meta.source="guest"
 
 
 class RecommendMeta(BaseModel):

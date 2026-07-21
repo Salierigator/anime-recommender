@@ -17,7 +17,10 @@
       ],
       "studios": [
         "Kyoto Animation"
-      ]
+      ],
+      "popularity": 95,
+      "members": 1480574,
+      "start_date": "2007-10-05"
     },
     {
       "mal_id": 19,
@@ -38,7 +41,10 @@
       ],
       "studios": [
         "Madhouse"
-      ]
+      ],
+      "popularity": 119,
+      "members": 1265581,
+      "start_date": "2004-04-07"
     },
     {
       "mal_id": 22135,
@@ -56,7 +62,10 @@
       "themes": [],
       "studios": [
         "Tatsunoko Production"
-      ]
+      ],
+      "popularity": 599,
+      "members": 426466,
+      "start_date": "2014-04-11"
     },
     {
       "mal_id": 7785,
@@ -80,7 +89,10 @@
       ],
       "studios": [
         "Madhouse"
-      ]
+      ],
+      "popularity": 514,
+      "members": 482226,
+      "start_date": "2010-04-23"
     },
     {
       "mal_id": 28851,
@@ -97,7 +109,10 @@
       "themes": [],
       "studios": [
         "Kyoto Animation"
-      ]
+      ],
+      "popularity": 19,
+      "members": 2525565,
+      "start_date": "2016-09-17"
     },
     {
       "mal_id": 1535,
@@ -116,7 +131,10 @@
       ],
       "studios": [
         "Madhouse"
-      ]
+      ],
+      "popularity": 2,
+      "members": 4170767,
+      "start_date": "2006-10-04"
     },
     {
       "mal_id": 1210,
@@ -137,7 +155,10 @@
       ],
       "studios": [
         "Gonzo"
-      ]
+      ],
+      "popularity": 269,
+      "members": 807503,
+      "start_date": "2006-07-10"
     },
     {
       "mal_id": 5114,
@@ -158,7 +179,10 @@
       ],
       "studios": [
         "Bones"
-      ]
+      ],
+      "popularity": 3,
+      "members": 3576199,
+      "start_date": "2009-04-05"
     },
     {
       "mal_id": 30,
@@ -183,7 +207,10 @@
       "studios": [
         "Gainax",
         "Tatsunoko Production"
-      ]
+      ],
+      "popularity": 45,
+      "members": 1962199,
+      "start_date": "1995-10-04"
     },
     {
       "mal_id": 50594,
@@ -202,7 +229,10 @@
       ],
       "studios": [
         "CoMix Wave Films"
-      ]
+      ],
+      "popularity": 536,
+      "members": 465683,
+      "start_date": "2022-11-11"
     },
     {
       "mal_id": 339,
@@ -226,7 +256,10 @@
       ],
       "studios": [
         "Triangle Staff"
-      ]
+      ],
+      "popularity": 238,
+      "members": 863004,
+      "start_date": "1998-07-06"
     },
     {
       "mal_id": 36098,
@@ -245,7 +278,10 @@
       ],
       "studios": [
         "Studio VOLN"
-      ]
+      ],
+      "popularity": 161,
+      "members": 1071676,
+      "start_date": "2018-09-01"
     }
   ],
   "cold": [
@@ -268,7 +304,10 @@
       ],
       "studios": [
         "MAPPA"
-      ]
+      ],
+      "popularity": 3075,
+      "members": 62053,
+      "start_date": "2024-11-08"
     },
     {
       "mal_id": 58514,
@@ -288,7 +327,10 @@
       "studios": [
         "OLM",
         "TOHO animation STUDIO"
-      ]
+      ],
+      "popularity": 653,
+      "members": 399935,
+      "start_date": "2025-01-10"
     },
     {
       "mal_id": 59654,
@@ -307,7 +349,10 @@
       ],
       "studios": [
         "MAPPA"
-      ]
+      ],
+      "popularity": 3579,
+      "members": 47007,
+      "start_date": "2025-05-30"
     },
     {
       "mal_id": 59845,
@@ -325,7 +370,10 @@
       ],
       "studios": [
         "CloverWorks"
-      ]
+      ],
+      "popularity": 918,
+      "members": 293176,
+      "start_date": "2025-07-06"
     },
     {
       "mal_id": 55825,
@@ -346,7 +394,10 @@
       ],
       "studios": [
         "MAPPA"
-      ]
+      ],
+      "popularity": 1504,
+      "members": 175937,
+      "start_date": "2026-01-01"
     },
     {
       "mal_id": 57658,
@@ -364,7 +415,10 @@
       ],
       "studios": [
         "MAPPA"
-      ]
+      ],
+      "popularity": 1939,
+      "members": 128227,
+      "start_date": "2026-01-01"
     },
     {
       "mal_id": 58197,
@@ -383,7 +437,10 @@
       ],
       "studios": [
         "OLM"
-      ]
+      ],
+      "popularity": 4694,
+      "members": 27227,
+      "start_date": "2025-07-08"
     },
     {
       "mal_id": 59192,
@@ -401,7 +458,10 @@
       ],
       "studios": [
         "ufotable"
-      ]
+      ],
+      "popularity": 1095,
+      "members": 245675,
+      "start_date": "2025-07-18"
     }
   ],
   "meta": {

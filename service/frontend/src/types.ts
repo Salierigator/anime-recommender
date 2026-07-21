@@ -10,6 +10,9 @@ export interface AnimeItem {
   genres: string[];
   themes: string[];
   studios: string[];
+  popularity: number | null;
+  members: number | null;
+  start_date: string | null;
 }
 
 export interface RecommendMeta {
@@ -70,6 +73,13 @@ export interface MapResponse {
   };
 }
 
+/** 1 entry từ POST /api/posters — poster + score/members MỚI (MAL v2), theo mal_id. */
+export interface PosterEntry {
+  poster: string | null;
+  score: number | null;
+  members: number | null;
+}
+
 export interface SearchResultItem {
   mal_id: number;
   title: string;
@@ -83,4 +93,31 @@ export interface SearchResultItem {
 
 export interface SearchResponse {
   results: SearchResultItem[];
+}
+
+// ---- UI state types (client-side thuần, không phải shape API) ----
+
+export type Tab = 'username' | 'guest';
+
+export type SortKey = 'relevance' | 'score' | 'popularity' | 'date';
+
+/** Filter / sort / số hiển thị của MỖI tab — đổi các giá trị này KHÔNG gọi lại backend. */
+export interface TabPrefs {
+  genres: string[];
+  themes: string[];
+  studios: string[];
+  types: string[];
+  minScore: number;
+  mainK: number;
+  coldK: number;
+  sortBy: SortKey;
+  sortAsc: boolean;
+}
+
+/** Các lựa chọn filter khả dụng, gom từ pool hiện tại. */
+export interface FacetOptions {
+  genres: string[];
+  themes: string[];
+  studios: string[];
+  types: string[];
 }

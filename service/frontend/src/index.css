@@ -19,3 +19,17 @@
     font-family: 'Inter', system-ui, sans-serif;
   }
 }
+
+/* Thanh loading chạy qua lại (indeterminate) — thay số trên card trong lúc fetch bản mới. */
+@keyframes slide-bar {
+  from { left: 0; }
+  to   { left: 60%; }
+}
+
+.loading-bar-seg {
+  animation: slide-bar 0.9s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar-seg { animation: none; left: 30%; }
+}

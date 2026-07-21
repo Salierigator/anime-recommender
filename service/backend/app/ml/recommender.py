@@ -55,11 +55,14 @@ class Recommender:
         self.mal2idx = dict(zip(real["mal_id"].to_list(), real["anime_idx"].to_list()))
         det = pd.read_csv(CLEANED / "details.csv",
                           usecols=["mal_id", "title", "type", "score", "start_date",
-                                   "genres", "themes", "studios", "rating"])
+                                   "popularity", "members", "genres", "themes",
+                                   "studios", "rating"])
         det["year"] = pd.to_datetime(det["start_date"], errors="coerce", utc=True).dt.year
+        det["start_date"] = det["start_date"].str.slice(0, 10)  # "YYYY-MM-DD" (sort client)
         for col in ("genres", "themes", "studios"):        # str -> list[str] (cho filter client)
             det[col] = det[col].map(_parse_list)
         self.detail = det.set_index("mal_id")[["title", "type", "score", "year",
+                                               "start_date", "popularity", "members",
                                                "genres", "themes", "studios"]]
         # SFW: anime_idx của item hentai (genre 'Hentai' HOẶC rating 'Rx - Hentai')
         is_hentai = (det["rating"] == "Rx - Hentai") | \
@@ -192,6 +195,12 @@ class Recommender:
             "year": int(d["year"]) if d is not None and pd.notna(d["year"]) else None,
             "mal_score": round(float(d["score"]), 2)
                          if d is not None and pd.notna(d["score"]) else None,
+            "popularity": int(d["popularity"])
+                          if d is not None and pd.notna(d["popularity"]) else None,
+            "members": int(d["members"])
+                       if d is not None and pd.notna(d["members"]) else None,
+            "start_date": str(d["start_date"])
+                          if d is not None and pd.notna(d["start_date"]) else None,
             "genres": list(d["genres"]) if d is not None else [],
             "themes": list(d["themes"]) if d is not None else [],
             "studios": list(d["studios"]) if d is not None else [],

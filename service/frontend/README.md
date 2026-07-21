@@ -1,73 +1,51 @@
-# React + TypeScript + Vite
+# Frontend — Anime Recommender
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite + TypeScript + Tailwind CSS 4 single-page app. Enter a MyAnimeList username
+(or hand-pick favorite anime in guest mode) and get personalized recommendations from the
+backend — with client-side filtering/sorting, shareable URLs, a taste map, and detail modals.
 
-Currently, two official plugins are available:
+## Run
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev        # http://localhost:5173 — needs backend on :8000 (mock mode is enough)
+npm run build      # tsc -b + vite build → dist/
+npm run lint
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Backend base URL comes from `VITE_API_URL` (default `http://localhost:8000`).
+Request/response shapes: [`../API_CONTRACT.md`](../API_CONTRACT.md).
+Visual conventions: [`DESIGN.md`](DESIGN.md).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Source layout
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
 ```
+src/
+├── main.tsx / index.css / App.css   # entry + Tailwind theme tokens
+├── App.tsx                # wiring: hooks + page layout (header, results, modal, map)
+├── api.ts                 # axios client, one function per endpoint
+├── types.ts               # API shapes + UI state types (Tab, TabPrefs, FacetOptions)
+├── components/
+│   ├── SearchForm.tsx           # tabs (username/guest), inputs, guest picker
+│   ├── FilterPanel.tsx          # filter/sort/show-K panel, sticky + compact on scroll
+│   ├── MultiSelectDropdown.tsx  # generic dropdown used by FilterPanel
+│   ├── ResultsSection.tsx       # one results grid (rendered twice: Main and Cold)
+│   ├── AnimeCard.tsx            # card + poster loading/fallback
+│   ├── AnimeModal.tsx           # detail modal (Jikan primary, backend fallback)
+│   ├── MapPreview.tsx           # small taste-map banner
+│   └── MapExplorer.tsx          # fullscreen canvas map (pan/zoom/hover)
+├── hooks/
+│   ├── useRecommendations.ts    # per-tab result pools + handleSearch (dedupe/abort)
+│   ├── useResultsPipeline.ts    # pool → facets → filter → sort → slice
+│   ├── useTabPrefs.ts           # per-tab filter/sort/display prefs (one object per tab)
+│   ├── useGuestState.ts         # guest picks + watched set + localStorage persistence
+│   └── useUrlSync.ts            # URL ?u=/?ids=/?watched=/?sort= ↔ state (share links)
+└── utils/
+    ├── sortAnime.ts             # client-side sort (relevance/score/popularity/date)
+    └── jikanQueue.ts            # rate-limited Jikan queue (posters/details fallback)
+```
+
+Convention: components render + hold local UI state only; cross-cutting state and effects
+live in `hooks/`; `App.tsx` only wires them together. New backend calls go in `api.ts`,
+new shared types in `types.ts` — keep `App.tsx`/`SearchForm.tsx` from growing back into
+monoliths.

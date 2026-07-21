@@ -44,9 +44,12 @@ class RealService(RecommenderService):
                 print(f"⚠ map TẮT (recommend vẫn chạy): {e}")
 
     def recommend(self, req: RecommendRequest) -> RecommendResponse:
-        if req.mal_ids:
-            user = self.rec.user_from_mal_ids(req.mal_ids)
-            total_entries = len(req.mal_ids)
+        if req.mal_ids or not req.username:                  # guest: cả hai rỗng → history rỗng
+            ids = req.mal_ids or []
+            user = self.rec.user_from_mal_ids(ids)
+            if not ids:
+                user["source"] = "guest"
+            total_entries = len(ids)
         else:                                                # username: luôn crawl live
             animelist, profile = self._fetch_live(req.username)
             if not animelist:                                # rỗng / user không tồn tại / private / lỗi mạng
