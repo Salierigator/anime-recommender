@@ -5,6 +5,7 @@
 A web app that turns your watch history (or a list of your favorite anime) into a personalized anime recommendation list.
 
 **[▶ Try the live demo ◀](https://salierigator.github.io/anime-recommender/)** — enter your MyAnimeList username for a ranked list.
+
 <sub><i>The backend is on a free tier, so the first request after it's been idle may take ~60s to wake up. Sorry about that.</i></sub> <sub>(,,¬﹏¬,,)</sub>
 
 <p align="center">
