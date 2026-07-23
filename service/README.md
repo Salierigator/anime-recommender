@@ -1,43 +1,25 @@
 # service/
 
-The web app: FastAPI backend + React frontend. Read-only consumer of `artifacts/` — it loads the
-exported model, never trains, and picks up a retrain automatically because the file contract
-doesn't change.
+The deployable web app — the final stage of the pipeline, turning a MyAnimeList username into anime recommendations. It's a **read-only consumer of `artifacts/`**: it loads the exported model and picks up a retrain automatically because the file contract doesn't change.
 
-```
-backend/
-├── recommend.py   # CLI entry point
-├── app/
-│   ├── main.py    # create_app() + lifespan (mock → MockService, real → RealService)
-│   ├── api/       # routes: health, recommend, posters, map
-│   ├── services/  # business logic (mock + real behind one interface)
-│   ├── ml/        # serving core: Recommender, AnimeMap
-│   └── clients/   # MAL v2 + Jikan
-└── fixtures/      # sample payloads for mock mode
-frontend/          # React + Vite + TypeScript
-```
+Two halves, each with its own README:
 
-## Run
+| | |
+|---|---|
+| [`backend/`](backend/) | FastAPI service + CLI. Loads the trained model and serves recommendations. |
+| [`frontend/`](frontend/) | React + Vite + TypeScript single-page UI. |
+
+The two talk over a JSON API.
+
+## Run both locally
 
 ```bash
-cd service/backend && pip install -r requirements.txt        # once, inside the venv
+# Backend — mock mode needs no model, best for frontend work
+cd service/backend && MOCK_MODE=1 uvicorn app.main:app --reload --port 8000
 
-MOCK_MODE=1 uvicorn app.main:app --reload --port 8000        # mock: fixtures, no model loaded
-MOCK_MODE=0 uvicorn app.main:app --port 8000                 # real: loads artifacts/ (~5s)
-#   GET /api/health · POST /api/recommend · GET /api/map · Swagger at /docs
-
-cd service/frontend && npm run dev
+# Frontend — in another terminal
+cd service/frontend && npm install && npm run dev
+#   → http://localhost:5173
 ```
 
-Mock mode is the one to use for frontend work: it returns `fixtures/recommend_sample.json` without
-pulling torch/lightgbm into the process. Real mode needs `artifacts/` present, plus
-`MAL_CLIENT_ID` in `service/.env` to resolve live usernames.
-
-## CLI
-
-```bash
-venv/bin/python service/backend/recommend.py <username> [--top-k 20] [--cold-k 10] [--live]
-venv/bin/python service/backend/recommend.py --mal-ids fixtures/dummy_mal_ids.txt   # no MAL key needed
-```
-
-API request/response shapes: `service/API_CONTRACT.md`.
+For real recommendations, the CLI, the full endpoint list, and the UI source layout, see [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md).

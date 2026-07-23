@@ -1,8 +1,6 @@
-# Frontend — Anime Recommender
+# service/frontend/
 
-React 19 + Vite + TypeScript + Tailwind CSS 4 single-page app. Enter a MyAnimeList username
-(or hand-pick favorite anime in guest mode) and get personalized recommendations from the
-backend — with client-side filtering/sorting, shareable URLs, a taste map, and detail modals.
+React 19 + Vite + TypeScript + Tailwind CSS 4 single-page app. Enter a MyAnimeList username (or hand-pick favorite anime in guest mode) and get personalized recommendations from the backend — with client-side filtering/sorting, shareable URLs, and detail modals.
 
 ## Run
 
@@ -13,16 +11,14 @@ npm run build      # tsc -b + vite build → dist/
 npm run lint
 ```
 
-Backend base URL comes from `VITE_API_URL` (default `http://localhost:8000`).
-Request/response shapes: [`../API_CONTRACT.md`](../API_CONTRACT.md).
-Visual conventions: [`DESIGN.md`](DESIGN.md).
+Backend base URL comes from `VITE_API_URL` (default `http://localhost:8000`). The API it calls is documented in [`../backend/`](../backend/) — live request/response shapes are in the backend's Swagger UI at `/docs`.
 
 ## Source layout
 
 ```
 src/
 ├── main.tsx / index.css / App.css   # entry + Tailwind theme tokens
-├── App.tsx                # wiring: hooks + page layout (header, results, modal, map)
+├── App.tsx                # wiring: hooks + page layout (header, results, modal)
 ├── api.ts                 # axios client, one function per endpoint
 ├── types.ts               # API shapes + UI state types (Tab, TabPrefs, FacetOptions)
 ├── components/
@@ -31,9 +27,7 @@ src/
 │   ├── MultiSelectDropdown.tsx  # generic dropdown used by FilterPanel
 │   ├── ResultsSection.tsx       # one results grid (rendered twice: Main and Cold)
 │   ├── AnimeCard.tsx            # card + poster loading/fallback
-│   ├── AnimeModal.tsx           # detail modal (Jikan primary, backend fallback)
-│   ├── MapPreview.tsx           # small taste-map banner
-│   └── MapExplorer.tsx          # fullscreen canvas map (pan/zoom/hover)
+│   └── AnimeModal.tsx           # detail modal (Jikan primary, backend fallback)
 ├── hooks/
 │   ├── useRecommendations.ts    # per-tab result pools + handleSearch (dedupe/abort)
 │   ├── useResultsPipeline.ts    # pool → facets → filter → sort → slice
@@ -42,10 +36,5 @@ src/
 │   └── useUrlSync.ts            # URL ?u=/?ids=/?watched=/?sort= ↔ state (share links)
 └── utils/
     ├── sortAnime.ts             # client-side sort (relevance/score/popularity/date)
-    └── jikanQueue.ts            # rate-limited Jikan queue (posters/details fallback)
+    └── jikanDetail.ts           # client-side Jikan fetch for the modal (cached, backend fallback)
 ```
-
-Convention: components render + hold local UI state only; cross-cutting state and effects
-live in `hooks/`; `App.tsx` only wires them together. New backend calls go in `api.ts`,
-new shared types in `types.ts` — keep `App.tsx`/`SearchForm.tsx` from growing back into
-monoliths.
