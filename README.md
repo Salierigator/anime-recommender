@@ -22,6 +22,8 @@ Two-stage recommender architecture (retrieval + rerank) — the standard shape f
 2. **Ranking** — LightGBM (lambdarank) reranks the top 200 candidates on 29 features (user–item cosine, history affinity, genre/theme overlap, MAL metadata, …). Expensive per item, so it only ever sees the shortlist.
 3. **Serving** — FastAPI backend + React frontend. Newly released titles the model never trained on (also called cold items) are served as a separate section ranked by cosine, never through the ranker — the ranker is trained on warm items and buries cold ones.
 
+For a detailed description of each stage, see the component README: [retriever](model/retriever/README.md), [ranker](model/ranker/README.md), and [service](service/README.md).
+
 ```
 data/  ──>  model/      ──>  artifacts/    ──>  service/
 raw         retriever        item_vectors       FastAPI + React
